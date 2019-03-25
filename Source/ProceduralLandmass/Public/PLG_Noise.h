@@ -20,5 +20,12 @@ public:
 	 * @return 
 	 */
 	static TMap<int32, TArray<float>> GenerateNoiseMap(int mapSize, float scale);
-	
+
+	static float PerlinNoise(float x, float y);
+	static float PerlinNoise(FVector2D p);
+
+	static float Fade(float t);
+
+	/* Returns the gradient value for a given p */
+	static FVector2D Gradient(const FVector2D& p);	
 };

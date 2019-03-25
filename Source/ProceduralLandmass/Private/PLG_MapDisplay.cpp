@@ -16,9 +16,9 @@ void UPLG_MapDisplay::DrawNoiseMap(TMap<int32, TArray<float>> noiseMap)
 
 	for (int32 y = 0; y < height; y++)
 	{
+		TArray<float> row = *noiseMap.Find(y);
 		for (int32 x = 0; x < width; x++)
 		{
-			TArray<float> row = *noiseMap.Find(y);
 			FLinearColor color = FLinearColor::LerpUsingHSV(FLinearColor::Black, FLinearColor::White, row[x]);
 			colourMap[y * width + x] = color.ToRGBE();
 		}
@@ -37,7 +37,8 @@ void UPLG_MapDisplay::DrawNoiseMap(TMap<int32, TArray<float>> noiseMap)
 		if(mesh)
 		{
 			UMaterialInstanceDynamic* material = mesh->CreateDynamicMaterialInstance(0);
-			material->SetTextureParameterValue("Texture", texture);
+			material->SetTextureParameterValue("Texture", texture);			
+			mesh->SetRelativeScale3D(FVector(width, height, 1.0f));
 		}
 	}
 }
