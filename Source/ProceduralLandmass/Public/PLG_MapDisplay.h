@@ -4,7 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Array2D.h"
 #include "PLG_MapDisplay.generated.h"
+
+
+class UTexture2D;
+struct FMeshData;
+class UProceduralMeshComponent;
 
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -13,22 +19,5 @@ class PROCEDURALLANDMASS_API UPLG_MapDisplay : public UActorComponent
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	AActor* RenderTarget;
-
-	void DrawNoiseMap(TMap<int32, TArray<float>> noiseMap);
-
-public:	
-	// Sets default values for this component's properties
-	UPLG_MapDisplay();
-
-protected:
-	// Called when the game starts
-	virtual void BeginPlay() override;
-
-public:	
-	// Called every frame
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-		
+	
 };
