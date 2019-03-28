@@ -5,7 +5,7 @@
 #include "UObject/NoExportTypes.h"
 #include "Array2D.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-#include "PLG_NoiseLibrary.generated.h"
+#include "NoiseLibrary.generated.h"
 
 
 /**

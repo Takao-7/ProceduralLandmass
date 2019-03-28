@@ -1,6 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "Public/PLG_NoiseLibrary.h"
+#include "Public/NoiseLibrary.h"
 #include "Engine/Texture2D.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"

@@ -1,11 +1,20 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
-
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "PLG_MeshGenerator.h"
-#include "PLG_MapGenerator.generated.h"
+#include "Structs/MeshData.h"
+#include "TerrainGenerator.generated.h"
+
+
+class UProceduralMeshComponent;
+class UMaterial;
+class UCurveFloat;
+class USceneComponent;
+class UTexture2D;
+class AStaticMeshActor;
+struct FMeshData;
+struct FLinearColor;
 
 
 USTRUCT(BlueprintType)
@@ -13,6 +22,7 @@ struct FTerrainType
 {
 	GENERATED_BODY()
 
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FString Name;
 
@@ -21,6 +31,25 @@ struct FTerrainType
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FLinearColor Color;
+};
+
+
+USTRUCT(BlueprintType)
+struct FMapData
+{
+	GENERATED_BODY()
+
+public:
+	FArray2D HeightMap;
+	TArray<FLinearColor> ColorMap;
+
+	FMapData() {};
+	FMapData(FArray2D noiseMap, TArray<FLinearColor> colorMap)
+	{
+		HeightMap = noiseMap;
+		ColorMap = colorMap;
+	};
+	~FMapData() {};
 };
 
 
@@ -33,16 +62,8 @@ enum class EDrawMode : uint8
 };
 
 
-class UProceduralMeshComponent;
-class UMaterial;
-class UCurveFloat;
-class USceneComponent;
-class UTexture2D;
-class AStaticMeshActor;
-
-
 UCLASS()
-class PROCEDURALLANDMASS_API APLG_MapGenerator : public AActor
+class PROCEDURALLANDMASS_API ATerrainGenerator : public AActor
 {
 	GENERATED_BODY()
 
@@ -77,12 +98,12 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0, ClampMax = 6), Category = "Map Generator|General")
 	int32 LevelOfDetail = 0;
 
-	/* The target map size, in cm. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 100.0f), Category = "Map Generator|General")
-	float TargetMapSize = 1000.0f;
+	/* The overall map scale. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|General")
+	float MapScale = 100.0f;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0.001f), Category = "Map Generator|Settings")
-	float NoiseScale = 0.3f;
+	float NoiseScale = 30.0f;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0), Category = "Map Generator|Settings")
 	int32 Octaves = 4;
@@ -112,6 +133,8 @@ protected:
 	UCurveFloat* MeshHeightCurve;
 
 public:
+	/* The map chunk size. This is the number of vertices per line, per chunk.
+	 * Change witch caution. Default is 241. */
 	static const int32 MapChunkSize = 241;
 
 
@@ -120,10 +143,10 @@ public:
 	/////////////////////////////////////////////////////
 protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawTexture(UTexture2D* texture, float targetSize);
+	void DrawTexture(UTexture2D* texture, float targetScale);
 	
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetSize);
+	void DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale);
 
 	UFUNCTION(BlueprintPure, Category = "Map Generator")
 	bool ShouldGenerateMap() const { return bAutoUpdate || bGenerateMap; };
@@ -131,13 +154,29 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void GenerateMap(bool bCreateNewMesh = false);
 
-private:
-	void SetComponentScaleToTextureSize(USceneComponent* component, const UTexture2D* texture, int32 initialSize = 1);
+	void DrawMap(FArray2D &noiseMap, TArray<FLinearColor> colorMap);
+
+	virtual void BeginPlay() override;
 	
 public:	
 	// Sets default values for this actor's properties
-	APLG_MapGenerator();
+	ATerrainGenerator();
 
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	static UTexture2D* TextureFromColorMap(const TArray<FLinearColor>& colorMap);
+
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	static UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
+
+	UFUNCTION(BlueprintPure, Category = "Map Generator")
+	static int32 GetMapChunkSize() { return MapChunkSize; };
+
+	/* Lambda type: (FMapData)->void */	
+	template<typename Lambda>
+	void RequestMapData(Lambda callback);
+
+	void MapDataThread();
+
+private:
 	void SetPlaneVisibility(bool bIsVisible);
-
 };

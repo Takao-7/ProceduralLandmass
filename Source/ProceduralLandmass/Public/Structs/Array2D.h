@@ -12,6 +12,7 @@ struct FArray2D
 
 public:
 	FArray2D() {};
+	~FArray2D() {};
 
 	/**
 	 * @param sizeX Number of columns
