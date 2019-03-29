@@ -42,14 +42,25 @@ struct FMapData
 public:
 	FArray2D HeightMap;
 	TArray<FLinearColor> ColorMap;
+	/* Offset for verticies. */
+	FVector Offset;
 
 	FMapData() {};
-	FMapData(FArray2D noiseMap, TArray<FLinearColor> colorMap)
-	{
-		HeightMap = noiseMap;
-		ColorMap = colorMap;
-	};
+	FMapData(FArray2D noiseMap, TArray<FLinearColor> colorMap, FVector offset = FVector::ZeroVector) : HeightMap(noiseMap), ColorMap(colorMap), Offset(offset) {};
 	~FMapData() {};
+};
+
+
+template<typename T>
+struct FMapThreadInfo
+{
+public:
+	TFunction<void (T)> Callback;
+	T Parameter;
+
+	FMapThreadInfo() {};
+	FMapThreadInfo(TFunction<void(T)> callback, T parameter) : Callback(callback), Parameter(parameter) {};
+	~FMapThreadInfo() {};
 };
 
 
@@ -96,7 +107,7 @@ protected:
 	EDrawMode DrawMode;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0, ClampMax = 6), Category = "Map Generator|General")
-	int32 LevelOfDetail = 0;
+	int32 EditorPreviewLevelOfDetail = 0;
 
 	/* The overall map scale. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|General")
@@ -137,6 +148,11 @@ public:
 	 * Change witch caution. Default is 241. */
 	static const int32 MapChunkSize = 241;
 
+private:
+	int32 CurrentMeshSectionIndex = 0;
+	TQueue<FMapThreadInfo<FMapData>> MapDataThreadInfoQueue;
+	TQueue<FMapThreadInfo<FMeshData>> MeshDataThreadInfoQueue;
+	
 
 	/////////////////////////////////////////////////////
 					/* Functions */
@@ -154,9 +170,16 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void GenerateMap(bool bCreateNewMesh = false);
 
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	FMapData GenerateMapData(FVector2D center);
+
+	static FArray2D GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance = 0.5f, bool bOptimiseNormalization = false, const FVector2D& offset = FVector2D::ZeroVector, int32 seed = 42);
+
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void DrawMap(FArray2D &noiseMap, TArray<FLinearColor> colorMap);
 
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	
 public:	
 	// Sets default values for this actor's properties
@@ -171,11 +194,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Map Generator")
 	static int32 GetMapChunkSize() { return MapChunkSize; };
 
-	/* Lambda type: (FMapData)->void */	
-	template<typename Lambda>
-	void RequestMapData(Lambda callback);
+	UProceduralMeshComponent* GetMeshComponent() const { return MeshComponent; };
 
-	void MapDataThread();
+	void RequestMapData(FVector2D center, TFunction<void (FMapData)> callback);
+	void MapDataThread(FVector2D center, TFunction<void (FMapData)> callback);
+
+	void RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
+	void MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
 
 private:
 	void SetPlaneVisibility(bool bIsVisible);
