@@ -9,14 +9,13 @@
 struct FProcMeshTangent;
 struct FLinearColor;
 
-
+/**
+ * This struct contains the data needed to generate a mesh.
+ */
 USTRUCT(BlueprintType)
 struct FMeshData
 {
 	GENERATED_BODY()
-
-private:
-	int32 triangleIndex = 0;
 
 public:
 	TArray<FVector> Vertices;
@@ -24,57 +23,63 @@ public:
 	TArray<FVector2D> UVs;
 
 	TArray<FVector> Normals;
-	TArray<FLinearColor> VertexColors;
+	TArray<FColor> VertexColors;
 	TArray<FProcMeshTangent> Tangents;
-	int32 MeshSectionIndex = 0;
+
+	/* The level of detail this mesh data represents. */
+	int32 LOD = 0;
 
 
 	/////////////////////////////////////////////////////
 	FMeshData() {};
-	FMeshData(int32 meshSize)
+	/**
+	 * Creates a mesh data struct with the given data.
+	 * Safes the height map in the red vertex color channel. This version of the height map is compressed, because the vertex color is only 8 bit (Values in range 0-255).
+	 * The generated mesh data is centered, so the mesh component's central location will be at the mesh's center.
+	 * @param targetMeshSize The target mesh size in cm. If <= 0 we will use the height map width as size.
+	 */
+	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, int32 targetMeshSize = 0, const UCurveFloat* heightCurve = nullptr)
 	{
-		Vertices.SetNum(meshSize * meshSize);
-		Triangles.SetNum((meshSize - 1) * (meshSize - 1) * 6);
-		UVs.SetNum(meshSize * meshSize);
-	};
-	~FMeshData() {};
+		LOD = levelOfDetail;
 
-	/////////////////////////////////////////////////////
-	static FMeshData GenerateMeshData(FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, int32 meshSectionIndex, const FVector& offset = FVector::ZeroVector, const UCurveFloat* heightCurve = nullptr)
-	{
-		const int32 heightMapSize = heightMap.GetWidth();
-		const float topLeftX = (heightMapSize - 1) / -2.0f;
-		const float topLeftY = (heightMapSize - 1) / 2.0f;
+		const int32 meshSize = targetMeshSize <= 0 ? heightMap.GetWidth() : targetMeshSize;
+		const float topLeftX = (meshSize - 1) / -2.0f;
+		const float topLeftY = (meshSize - 1) / 2.0f;
 
 		const int32 meshSimplificationIncrement = levelOfDetail == 0 ? 1 : levelOfDetail * 2;
-		const int32 verticesPerLine = (heightMapSize - 1) / meshSimplificationIncrement + 1;
+		const int32 verticesPerLine = (meshSize - 1) / meshSimplificationIncrement + 1;
 
-		FMeshData meshData = FMeshData(verticesPerLine);
-		meshData.MeshSectionIndex = meshSectionIndex;
+		Vertices.SetNum(verticesPerLine * verticesPerLine);
+		Triangles.SetNum((verticesPerLine - 1) * (verticesPerLine - 1) * 6);
+		UVs.SetNum(verticesPerLine * verticesPerLine);
 
 		int32 vertexIndex = 0;
-		for (int32 y = 0; y < heightMapSize; y += meshSimplificationIncrement)
+		for (int32 y = 0; y < meshSize; y += meshSimplificationIncrement)
 		{
-			for (int32 x = 0; x < heightMapSize; x += meshSimplificationIncrement)
+			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
 			{
-				const float height = heightMap[y][x];
+				const float height = heightMap[vertexIndex];
 				const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
-				meshData.Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), height * heightMultiplier * curveValue) + offset;
-				meshData.UVs[vertexIndex] = FVector2D(x / (float)heightMapSize, y / (float)heightMapSize);
+				Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), height * heightMultiplier * curveValue);
+				UVs[vertexIndex] = FVector2D(x / (float)meshSize, y / (float)meshSize);
+				
+				/* Safe the height map to the red vertex color channel. */
+				const FColor color = FColor((uint8)FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height));
+				VertexColors[vertexIndex] = color;
 
-				if (x < heightMapSize - 1 && y < heightMapSize - 1)
-				{	
-					meshData.AddTriangle(vertexIndex, vertexIndex + verticesPerLine + 1, vertexIndex + verticesPerLine);
-					meshData.AddTriangle(vertexIndex + verticesPerLine + 1, vertexIndex, vertexIndex + 1);
+				if (x < meshSize - 1 && y < meshSize - 1)
+				{
+					AddTriangle(vertexIndex, vertexIndex + verticesPerLine + 1, vertexIndex + verticesPerLine);
+					AddTriangle(vertexIndex + verticesPerLine + 1, vertexIndex, vertexIndex + 1);
 				}
 
 				vertexIndex++;
 			}
 		}
-
-		return meshData;
 	};
+	~FMeshData() {};
 
+private:
 	/////////////////////////////////////////////////////
 	void AddTriangle(int32 a, int32 b, int32 c)
 	{
@@ -85,18 +90,19 @@ public:
 		triangleIndex += 3;
 	};
 
+	int32 triangleIndex = 0;
+
+public:
 	/////////////////////////////////////////////////////
-	/* Creates a mesh section in the given procedural mesh from this mesh data.
-	 * Clears the given mesh sections before that. */
-	void CreateMesh(UProceduralMeshComponent* mesh)
+	/* Creates a mesh section in the given procedural mesh from this mesh data. */
+	void CreateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0)
 	{
-		mesh->bUseAsyncCooking = true;
-		mesh->CreateMeshSection_LinearColor(MeshSectionIndex, Vertices, Triangles, Normals, UVs, VertexColors, Tangents, true);
+		mesh->CreateMeshSection(sectionIndex, Vertices, Triangles, Normals, UVs, VertexColors, Tangents, true);
 	};
 
 	/* Updates the given mesh section with this mesh data. */
-	void UpdateMesh(UProceduralMeshComponent* mesh)
+	void UpdateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0)
 	{
-		mesh->UpdateMeshSection_LinearColor(MeshSectionIndex, Vertices, Normals, UVs, VertexColors, Tangents);
+		mesh->UpdateMeshSection(sectionIndex, Vertices, Normals, UVs, VertexColors, Tangents);
 	};
 };

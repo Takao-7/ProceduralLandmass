@@ -9,6 +9,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Public/UnityLibrary.h"
+#include "PerlinNoiseGenerator.h"
 
 
 ATerrainGenerator::ATerrainGenerator()
@@ -17,35 +18,23 @@ ATerrainGenerator::ATerrainGenerator()
 	bRunConstructionScriptOnDrag = false;
 
 	RootComponent = Cast<USceneComponent>(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
-
-	MeshComponent = Cast<UProceduralMeshComponent>(CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Mesh")));
-	MeshComponent->SetupAttachment(RootComponent);
-	MeshComponent->SetRelativeScale3D(FVector(100.0f));
-
-	PreviewPlane = Cast<UStaticMeshComponent>(CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Plane")));
-	PreviewPlane->SetupAttachment(RootComponent);
-	PreviewPlane->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
-	SetPlaneVisibility(false);
 }
 
 void ATerrainGenerator::BeginPlay()
 {
 	Super::BeginPlay();
-	
-	PreviewPlane->SetMaterial(0, MeshMaterial);
-	MeshComponent->ClearAllMeshSections();	
 }
 
 void ATerrainGenerator::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	if (!MapDataThreadInfoQueue.IsEmpty() && !CriticalSectionMapDataQueue.TryLock())
+	/*if (!MapDataThreadInfoQueue.IsEmpty() && !CriticalSectionMapDataQueue.TryLock())
 	{
 		FMapThreadInfo<FMapData> threadInfo;
 		MapDataThreadInfoQueue.Dequeue(threadInfo);
 		threadInfo.Callback(threadInfo.Parameter);
-	}
+	}*/
 
 	if (!MeshDataThreadInfoQueue.IsEmpty() && !CriticalSectionMeshDataQueue.TryLock())
 	{
@@ -56,55 +45,44 @@ void ATerrainGenerator::Tick(float DeltaSeconds)
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::SetPlaneVisibility(bool bIsVisible)
-{
-	PreviewPlane->SetVisibility(bIsVisible);
-	PreviewPlane->SetHiddenInGame(!bIsVisible);
-}
-
-/////////////////////////////////////////////////////
 void ATerrainGenerator::GenerateMap(bool bCreateNewMesh /*= false*/)
 {
-	FMapData mapData = GenerateMapData(FVector2D::ZeroVector);
+	
+	//GenerateMapData(FVector2D::ZeroVector);
 
-	if (bCreateNewMesh)
-	{
-		MeshComponent->ClearAllMeshSections();
-	}
-
-	DrawMap(mapData.HeightMap, mapData.ColorMap);
+	//DrawMap(mapData.HeightMap, mapData.ColorMap);
 }
 
-FMapData ATerrainGenerator::GenerateMapData(FVector2D center)
-{
-	FArray2D noiseMap = GenerateNoiseMap(MapChunkSize, NoiseScale, Lacunarity, Octaves, Persistance, false, center + Offset, Seed);
-
-	TArray<FLinearColor> colorMap = TArray<FLinearColor>(); colorMap.SetNum(MapChunkSize * MapChunkSize);
-	if (Regions.Num() > 0)
-	{
-		/* Iterate over the noise map and based of the height value set the region color to the color map. */
-		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
-		{
-			for (const FTerrainType& region : Regions)
-			{
-				if (height <= region.Height)
-				{
-					colorMap[y * MapChunkSize + x] = region.Color;
-					break;
-				}
-			}
-		});
-	}
-	else
-	{
-		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
-		{
-			colorMap[y * MapChunkSize + x] = FLinearColor(height, height, height);
-		});
-	}
-
-	return FMapData(noiseMap, colorMap, FVector(center + Offset, 0.0f) * 100.0f);
-}
+//FMapData ATerrainGenerator::GenerateMapData(FVector2D center)
+//{
+//	FArray2D noiseMap = GenerateNoiseMap(MapChunkSize, NoiseScale, Lacunarity, Octaves, Persistance, false, center + Offset, Seed);
+//
+//	TArray<FLinearColor> colorMap = TArray<FLinearColor>(); colorMap.SetNum(MapChunkSize * MapChunkSize);
+//	if (Regions.Num() > 0)
+//	{
+//		/* Iterate over the noise map and based of the height value set the region color to the color map. */
+//		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
+//		{
+//			for (const FTerrainType& region : Regions)
+//			{
+//				if (height <= region.StartHeight)
+//				{
+//					colorMap[y * MapChunkSize + x] = region.Color;
+//					break;
+//				}
+//			}
+//		});
+//	}
+//	else
+//	{
+//		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
+//		{
+//			colorMap[y * MapChunkSize + x] = FLinearColor(height, height, height);
+//		});
+//	}
+//
+//	return FMapData(noiseMap, colorMap, FVector(center + Offset, 0.0f) * 100.0f);
+//}
 
 /////////////////////////////////////////////////////
 FArray2D ATerrainGenerator::GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance /*= 0.5f*/, bool bOptimiseNormalization /*= false*/, const FVector2D& offset /*= FVector2D::ZeroVector*/, int32 seed /*= 42*/)
@@ -183,19 +161,17 @@ void ATerrainGenerator::DrawMap(FArray2D& noiseMap, TArray<FLinearColor> colorMa
 	switch (DrawMode)
 	{
 	case EDrawMode::NoiseMap:
-		MeshComponent->ClearAllMeshSections();
 		DrawTexture(TextureFromHeightMap(noiseMap), MapScale);
 		break;
 	case EDrawMode::ColorMap:
-		MeshComponent->ClearAllMeshSections();
 		DrawTexture(TextureFromColorMap(colorMap), MapScale);
 		break;
 	case EDrawMode::Mesh:
 	{
-		SetPlaneVisibility(false);
+		/*SetPlaneVisibility(false);
 		FMeshData meshData = FMeshData::GenerateMeshData(noiseMap, MeshHeightMultiplier, EditorPreviewLevelOfDetail, 0, FVector::ZeroVector, MeshHeightCurve);
 		UTexture2D* texture = TextureFromColorMap(colorMap);
-		DrawMesh(meshData, texture, MeshMaterial, MeshComponent, MapScale);
+		DrawMesh(meshData, texture, MeshMaterial, MeshComponent, MapScale);*/
 		break;
 	}
 	}
@@ -206,18 +182,18 @@ void ATerrainGenerator::DrawMap(FArray2D& noiseMap, TArray<FLinearColor> colorMa
 /////////////////////////////////////////////////////
 void ATerrainGenerator::DrawTexture(UTexture2D* texture, float targetScale)
 {
-	PreviewPlane->SetMaterial(0, MeshMaterial);
+	/*PreviewPlane->SetMaterial(0, MeshMaterial);
 	UMaterialInstanceDynamic* material = PreviewPlane->CreateDynamicMaterialInstance(0);
 	if(material)
 	{
 		material->SetTextureParameterValue("Texture", texture);
-		
+
 		const float textureSize = texture->GetSizeX();
 		const float scaleFactor = textureSize / 100.0f;
 		PreviewPlane->SetRelativeScale3D(FVector(scaleFactor * targetScale));
 
 		SetPlaneVisibility(true);
-	}
+	}*/
 }
 
 void ATerrainGenerator::DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale)
@@ -246,14 +222,14 @@ UTexture2D* ATerrainGenerator::TextureFromColorMap(const TArray<FLinearColor>& c
 
 UTexture2D* ATerrainGenerator::TextureFromHeightMap(const FArray2D& heightMap)
 {
-	const int32 size = heightMap[0].Num();
+	const int32 size = heightMap.GetHeight();
 
 	TArray<FLinearColor> colorMap; colorMap.SetNum(size * size);
 	for (int32 y = 0; y < size; y++)
 	{
 		for (int32 x = 0; x < size; x++)
 		{
-			FLinearColor color = FLinearColor::LerpUsingHSV(FLinearColor::Black, FLinearColor::White, heightMap[x][y]);
+			FLinearColor color = FLinearColor::LerpUsingHSV(FLinearColor::Black, FLinearColor::White, heightMap.GetValue(x, y));
 			colorMap[y * size + x] = color;
 		}
 	}
@@ -262,36 +238,35 @@ UTexture2D* ATerrainGenerator::TextureFromHeightMap(const FArray2D& heightMap)
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::RequestMapData(FVector2D center, TFunction<void (FMapData)> callback)
-{
-	UUnityLibrary::CreateTask([=]() { MapDataThread(center, callback); })->StartBackgroundTask();
-}
-
-void ATerrainGenerator::MapDataThread(FVector2D center, TFunction<void (FMapData)> callback)
-{
-	FMapData mapData = GenerateMapData(center);
-	FMapThreadInfo<FMapData> threadInfo = FMapThreadInfo<FMapData>(callback, mapData);
-
-	{
-		FScopeLock ScopeLockMapData(&CriticalSectionMapDataQueue);
-		MapDataThreadInfoQueue.Enqueue(threadInfo);
-	}
-}
+//void ATerrainGenerator::RequestMapData(FVector2D center, TFunction<void (FMapData)> callback)
+//{
+//	UUnityLibrary::CreateTask([=]() { MapDataThread(center, callback); })->StartBackgroundTask();
+//}
+//
+//void ATerrainGenerator::MapDataThread(FVector2D center, TFunction<void (FMapData)> callback)
+//{
+//	FMapData mapData = GenerateMapData(center);
+//	FMapThreadInfo<FMapData> threadInfo = FMapThreadInfo<FMapData>(callback, mapData);
+//
+//	{
+//		FScopeLock ScopeLockMapData(&CriticalSectionMapDataQueue);
+//		MapDataThreadInfoQueue.Enqueue(threadInfo);
+//	}
+//}
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
-{
-	UUnityLibrary::CreateTask([=]() { MeshDataThread(mapData, lod, callback); })->StartBackgroundTask();
-}
+//void ATerrainGenerator::RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
+//{
+//	UUnityLibrary::CreateTask([=]() { MeshDataThread(mapData, lod, callback); })->StartBackgroundTask();
+//}
 
-void ATerrainGenerator::MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
-{
-	FMeshData meshData = FMeshData::GenerateMeshData(mapData.HeightMap, MeshHeightMultiplier, lod, CurrentMeshSectionIndex++, mapData.Offset, MeshHeightCurve);
-	FMapThreadInfo<FMeshData> threadInfo = FMapThreadInfo<FMeshData>(callback, meshData);
-
-	{
-		FScopeLock ScopeLockMeshData(&CriticalSectionMeshDataQueue);
-		MeshDataThreadInfoQueue.Enqueue(threadInfo);
-	}
-}
-
+//void ATerrainGenerator::MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
+//{
+//	FMeshData meshData = FMeshData(mapData.HeightMap, MeshHeightMultiplier, lod, MeshHeightCurve);
+//	FMapThreadInfo<FMeshData> threadInfo = FMapThreadInfo<FMeshData>(callback, meshData);
+//
+//	{
+//		FScopeLock ScopeLockMeshData(&CriticalSectionMeshDataQueue);
+//		MeshDataThreadInfoQueue.Enqueue(threadInfo);
+//	}
+//}

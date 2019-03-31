@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Structs/MeshData.h"
+#include "Structs/TerrainConfiguration.h"
 #include "TerrainGenerator.generated.h"
 
 
@@ -26,28 +27,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FString Name;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float Height;
+	/* The minimum height that this layer will start at. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0.0f, ClampMax = 1.0f))
+	float StartHeight;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FLinearColor Color;
-};
-
-
-USTRUCT(BlueprintType)
-struct FMapData
-{
-	GENERATED_BODY()
-
-public:
-	FArray2D HeightMap;
-	TArray<FLinearColor> ColorMap;
-	/* Offset for verticies. */
-	FVector Offset;
-
-	FMapData() {};
-	FMapData(FArray2D noiseMap, TArray<FLinearColor> colorMap, FVector offset = FVector::ZeroVector) : HeightMap(noiseMap), ColorMap(colorMap), Offset(offset) {};
-	~FMapData() {};
 };
 
 
@@ -80,17 +65,6 @@ class PROCEDURALLANDMASS_API ATerrainGenerator : public AActor
 
 
 	/////////////////////////////////////////////////////
-					/* Components */
-	/////////////////////////////////////////////////////
-protected:
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = "Map Generator")
-	UProceduralMeshComponent* MeshComponent;
-
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = "Map Generator")
-	UStaticMeshComponent* PreviewPlane;
-
-
-	/////////////////////////////////////////////////////
 					/* Parameters */
 	/////////////////////////////////////////////////////
 protected:
@@ -99,40 +73,23 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	bool bGenerateMap = false;
 
-	/* If true we will generate the noise map each time a value changes. */
+	/* If true we will generate the map each time a value changes. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	bool bAutoUpdate = true;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	EDrawMode DrawMode;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0, ClampMax = 6), Category = "Map Generator|General")
-	int32 EditorPreviewLevelOfDetail = 0;
+	/* While in the editor override the LOD with this value for EVERY chunk. A value of -1 means no override. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = -1, ClampMax = 6), Category = "Map Generator|General")
+	int32 EditorPreviewLevelOfDetail = -1;
 
-	/* The overall map scale. */
+	/* The scale of each chunk. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|General")
 	float MapScale = 100.0f;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0.001f), Category = "Map Generator|Settings")
-	float NoiseScale = 30.0f;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0), Category = "Map Generator|Settings")
-	int32 Octaves = 4;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0.0f, ClampMax = 1.0f), Category = "Map Generator|Settings")
-	float Persistance = 0.5f;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|Settings")
-	float Lacunarity = 2.0f;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|Settings")
-	int32 Seed = 42;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|Settings")
-	FVector2D Offset = FVector2D::ZeroVector;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|Settings")
-	float MeshHeightMultiplier = 10.0f;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
+	FTerrainConfiguration Configuration;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
 	TArray<FTerrainType> Regions;
@@ -148,10 +105,8 @@ public:
 	 * Change witch caution. Default is 241. */
 	static const int32 MapChunkSize = 241;
 
-private:
-	int32 CurrentMeshSectionIndex = 0;
-	
-	TQueue<FMapThreadInfo<FMapData>, EQueueMode::Mpsc> MapDataThreadInfoQueue;	
+private:	
+	//TQueue<FMapThreadInfo<FMapData>, EQueueMode::Mpsc> MapDataThreadInfoQueue;	
 	TQueue<FMapThreadInfo<FMeshData>, EQueueMode::Mpsc> MeshDataThreadInfoQueue;
 	
 	FCriticalSection CriticalSectionMapDataQueue;
@@ -174,8 +129,8 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void GenerateMap(bool bCreateNewMesh = false);
 
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	FMapData GenerateMapData(FVector2D center);
+	/*UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	void GenerateMapData(FVector2D center);*/
 
 	static FArray2D GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance = 0.5f, bool bOptimiseNormalization = false, const FVector2D& offset = FVector2D::ZeroVector, int32 seed = 42);
 
@@ -197,15 +152,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Map Generator")
 	static int32 GetMapChunkSize() { return MapChunkSize; };
+	
+	/*void RequestMapData(FVector2D center, TFunction<void (FMapData)> callback);
+	void MapDataThread(FVector2D center, TFunction<void (FMapData)> callback);*/
 
-	UProceduralMeshComponent* GetMeshComponent() const { return MeshComponent; };
-
-	void RequestMapData(FVector2D center, TFunction<void (FMapData)> callback);
-	void MapDataThread(FVector2D center, TFunction<void (FMapData)> callback);
-
-	void RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
-	void MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
-
-private:
-	void SetPlaneVisibility(bool bIsVisible);
+	/*void RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
+	void MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);*/
 };

@@ -10,6 +10,16 @@ struct FArray2D
 {
 	GENERATED_BODY()
 
+protected:
+	UPROPERTY(BlueprintReadOnly)
+	TArray<float> ArrayIntern;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 NumRows;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 NumColumns;
+
 public:
 	FArray2D() {};
 	~FArray2D() {};
@@ -20,79 +30,93 @@ public:
 	 */
 	FArray2D(int32 sizeX, int32 sizeY)
 	{
-		ArrayIntern = TArray<TArray<float>>();
-		ArrayIntern.SetNum(sizeY);
-
-		for (int32 y = 0; y < sizeY; ++y)
-		{
-			TArray<float> row = TArray<float>();
-			row.SetNum(sizeX);
-			ArrayIntern[y] = row;
-		}
+		ArrayIntern = TArray<float>();
+		ArrayIntern.SetNum(sizeX * sizeY);
 
 		NumRows = sizeY;
 		NumColumns = sizeX;
 	};
 
-	FORCEINLINE TArray<float>& operator[] (int32 row)
+	FArray2D(const FArray2D& otherArray)
 	{
-		return ArrayIntern[row];
-	};
+		ArrayIntern.SetNum(otherArray.NumColumns * otherArray.NumRows);
+		this->NumRows = otherArray.NumRows;
+		this->NumColumns = otherArray.NumColumns;
 
-	FORCEINLINE const TArray<float>& operator[] (int32 row) const
-	{
-		return ArrayIntern[row];
-	};
-
-	/* Returns the value at row y and column x. */
-	FORCEINLINE float Get(int32 x, int32 y) const
-	{
-		return ArrayIntern[y][x];
+		TFunctionRef<void (int32 x, int32 y, float& value)> lamdba = [&](int32 x, int32 y, float& value) { value = otherArray.GetValue(x, y); };
+		ForEachWithIndex(lamdba);
 	}
 
-	/* Set value to row y and column x. */
-	void Set(int32 x, int32 y, float value)
+	FORCEINLINE float operator[] (int32 index) const
 	{
-		ArrayIntern[y][x] = value;
+		return ArrayIntern[index];
+	};
+
+	FORCEINLINE float& operator[] (int32 index)
+	{
+		return ArrayIntern[index];
+	};
+
+	/* Returns the value at column x and row y. */
+	FORCEINLINE float GetValue(int32 x, int32 y) const
+	{
+		return ArrayIntern[y * NumColumns + x];
+	}
+
+	/* Sets the value in cell at column x and row y. */
+	FORCEINLINE void Set(int32 x, int32 y, float value)
+	{
+		ArrayIntern[y * NumColumns + x] = value;
 	}
 
 	FORCEINLINE int32 GetHeight() const { return NumRows; };
 	FORCEINLINE int32 GetWidth() const { return NumColumns; };
 
-	/* Loops through the entire array, row by row and calls the lambda with each value as a parameter (passed by reference). 
-	 * The lambda should be from type: (float&)->void */
-	template <typename Lambda>
-	void ForEach(Lambda lambda)
+	/* Loops through the entire array, row by row and calls the lambda with each value as a parameter (passed by reference). */
+	void ForEach(TFunction<void (float& value)> lambda)
 	{
 		for (int32 y = 0; y < NumColumns; y++)
 		{
 			for (int32 x = 0; x < NumRows; x++)
 			{
-				lambda(ArrayIntern[y][x]);
+				float& value = ArrayIntern[y * NumColumns + x];
+				lambda(value);
 			}
 		}
 	}
 
 	/* Loops through the entire array, row by row and calls the lambda with each value as the first parameter (passed by reference)
-	 * and the current X and Y position as second and third parameter.
-	 * The lambda should be from type: (float&, int32, int32)->void */
-	template <typename Lambda>
-	void ForEachWithIndex(Lambda lambda)
+	 * and the current X and Y position as second and third parameter. */
+	void ForEachWithIndex(TFunction<void (float& value, int32 xIndex, int32 yIndex)> lambda)
 	{
 		for (int32 y = 0; y < NumColumns; y++)
 		{
 			for (int32 x = 0; x < NumRows; x++)
 			{
-				lambda(ArrayIntern[y][x], x, y);
+				float& value = ArrayIntern[y * NumColumns + x];
+				lambda(value, x, y);
 			}
 		}
 	}
 
-private:
-	TArray<TArray<float>> ArrayIntern;
-	int32 NumRows;
-	int32 NumColumns;
+	/* Loops through the entire array, row by row and calls the lambda with each value as the first parameter (passed by reference)
+	 * and the current X and Y position as second and third parameter. */
+	void ForEachWithIndex(TFunctionRef<void (int32 xIndex, int32 yIndex, float& value)> lambda)
+	{
+		for (int32 y = 0; y < NumColumns; y++)
+		{
+			for (int32 x = 0; x < NumRows; x++)
+			{
+				float& value = ArrayIntern[y * NumColumns + x];
+				lambda(x, y, value);
+			}
+		}
+	}
 };
+
+
+DECLARE_DYNAMIC_DELEGATE_FourParams(FForEachLoopWithIndexDelegate, FArray2D&, theArray, float, value, int32, row, int32, column);
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FForEachLoopDelegate, FArray2D&, theArray, float, value);
 
 
 UCLASS(meta = (DisplayName = "Array2D Functions"))
@@ -102,21 +126,31 @@ class PROCEDURALLANDMASS_API UArray2DFunctions : public UBlueprintFunctionLibrar
 
 
 public:
-	UFUNCTION(BlueprintCallable)
-	static float Get(const FArray2D& array, int32 column, int32 row)
+	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get"))
+	static float Get(const FArray2D& inArray, int32 column, int32 row)
 	{
-		return array.Get(column, row);
+		return inArray.GetValue(column, row);
 	}
 
 	UFUNCTION(BlueprintCallable)
-	static void Set(UPARAM(ref) FArray2D& array, int32 column, int32 row, float value)
+	static void Set(UPARAM(ref) FArray2D& inArray, int32 column, int32 row, float value)
 	{
-		array.Set(column, row, value);
+		inArray.Set(column, row, value);
 	}
 
+	/* A for each loop for two dimensional arrays. */
 	UFUNCTION(BlueprintCallable)
-	static TArray<float>& GetRow(UPARAM(ref) FArray2D& array, int32 row)
+	static void ForEachLoop(UPARAM(ref) FArray2D& inArray, FForEachLoopDelegate loopBody)
 	{
-		return array[row];
+		TFunction<void (float&)> lambda = [=](float value) { loopBody; };
+		inArray.ForEach(lambda);
+	}
+
+	/* A for each loop with index for two dimensional arrays. */
+	UFUNCTION(BlueprintCallable)
+	static void ForEachLoopWithIndex(UPARAM(ref) FArray2D& inArray, FForEachLoopWithIndexDelegate loopBody)
+	{
+		TFunction<void(float&, int32, int32)> lambda = [=](float value, int32 xIndex, int32 yIndex) { loopBody; };
+		inArray.ForEachWithIndex(lambda);
 	}
 };
