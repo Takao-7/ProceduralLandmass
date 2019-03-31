@@ -40,14 +40,14 @@ void ATerrainGenerator::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	if (!MapDataThreadInfoQueue.IsEmpty())
+	if (!MapDataThreadInfoQueue.IsEmpty() && !CriticalSectionMapDataQueue.TryLock())
 	{
 		FMapThreadInfo<FMapData> threadInfo;
 		MapDataThreadInfoQueue.Dequeue(threadInfo);
 		threadInfo.Callback(threadInfo.Parameter);
 	}
 
-	if (!MeshDataThreadInfoQueue.IsEmpty())
+	if (!MeshDataThreadInfoQueue.IsEmpty() && !CriticalSectionMeshDataQueue.TryLock())
 	{
 		FMapThreadInfo<FMeshData> threadInfo;
 		MeshDataThreadInfoQueue.Dequeue(threadInfo);
@@ -272,7 +272,10 @@ void ATerrainGenerator::MapDataThread(FVector2D center, TFunction<void (FMapData
 	FMapData mapData = GenerateMapData(center);
 	FMapThreadInfo<FMapData> threadInfo = FMapThreadInfo<FMapData>(callback, mapData);
 
-	MapDataThreadInfoQueue.Enqueue(threadInfo);
+	{
+		FScopeLock ScopeLockMapData(&CriticalSectionMapDataQueue);
+		MapDataThreadInfoQueue.Enqueue(threadInfo);
+	}
 }
 
 /////////////////////////////////////////////////////
@@ -286,6 +289,9 @@ void ATerrainGenerator::MeshDataThread(FMapData mapData, int32 lod, TFunction<vo
 	FMeshData meshData = FMeshData::GenerateMeshData(mapData.HeightMap, MeshHeightMultiplier, lod, CurrentMeshSectionIndex++, mapData.Offset, MeshHeightCurve);
 	FMapThreadInfo<FMeshData> threadInfo = FMapThreadInfo<FMeshData>(callback, meshData);
 
-	MeshDataThreadInfoQueue.Enqueue(threadInfo);
+	{
+		FScopeLock ScopeLockMeshData(&CriticalSectionMeshDataQueue);
+		MeshDataThreadInfoQueue.Enqueue(threadInfo);
+	}
 }
 

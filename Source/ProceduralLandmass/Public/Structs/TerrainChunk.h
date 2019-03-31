@@ -119,7 +119,7 @@ public:
 		Viewer = viewer;
 		MeshComponent = TerrainGenerator->GetMeshComponent();
 
-		/*if (TerrainClass && World)
+		if (TerrainClass && World)
 		{
 			const FTransform spawnTransform = FTransform(FRotator::ZeroRotator, Position, FVector::OneVector);
 			FActorSpawnParameters spawnParams;
@@ -130,10 +130,9 @@ public:
 			MeshComponent = Cast<UProceduralMeshComponent>(meshActor->GetComponentByClass(UProceduralMeshComponent::StaticClass()));
 			meshActor->AttachToActor(parent, FAttachmentTransformRules::KeepWorldTransform);
 			MeshComponent->SetRelativeScale3D(FVector(scale));
-		}*/
+		}
 		
 		SetIsVisible(false);
-
 		LODmeshes.SetNum(DetailLevels->Num());
 		for (int32 i = 0; i < LODmeshes.Num(); i++)
 		{

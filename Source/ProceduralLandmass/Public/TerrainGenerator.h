@@ -150,9 +150,13 @@ public:
 
 private:
 	int32 CurrentMeshSectionIndex = 0;
-	TQueue<FMapThreadInfo<FMapData>> MapDataThreadInfoQueue;
-	TQueue<FMapThreadInfo<FMeshData>> MeshDataThreadInfoQueue;
 	
+	TQueue<FMapThreadInfo<FMapData>, EQueueMode::Mpsc> MapDataThreadInfoQueue;	
+	TQueue<FMapThreadInfo<FMeshData>, EQueueMode::Mpsc> MeshDataThreadInfoQueue;
+	
+	FCriticalSection CriticalSectionMapDataQueue;
+	FCriticalSection CriticalSectionMeshDataQueue;
+
 
 	/////////////////////////////////////////////////////
 					/* Functions */
