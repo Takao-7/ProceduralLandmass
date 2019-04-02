@@ -72,3 +72,16 @@ bool UTerrainChunk::UpdateTerrainChunk()
 
 	return true;
 }
+
+void UTerrainChunk::SetIsVisible(bool bVisible)
+{
+	if (MeshComponent)
+	{
+		MeshComponent->SetMeshSectionVisible(CurrentLOD, bVisible);
+	}
+}
+
+void UTerrainChunk::DeleteMesh()
+{
+	ClearAllMeshSections();
+}

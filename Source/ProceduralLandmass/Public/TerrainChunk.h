@@ -43,10 +43,6 @@ protected:
 	UPROPERTY(BlueprintReadWrite)
 	float MaxViewDistance = 0.0f;
 
-	/* The chunk size (edge length) in cm. */
-	UPROPERTY(BlueprintReadWrite)
-	float ChunkSize;
-
 	/* Our status */
 	UPROPERTY(BlueprintReadWrite)
 	EChunkStatus Status = EChunkStatus::SPAWNED;
@@ -75,17 +71,8 @@ public:
 	 * @return The new visibility. */
 	bool UpdateTerrainChunk();
 
-	bool IsVisible() const
-	{
-		return MeshComponent && MeshComponent->IsMeshSectionVisible(CurrentLOD);
-	};
+	bool IsVisible() const { return MeshComponent && MeshComponent->IsMeshSectionVisible(CurrentLOD); };
+	void SetIsVisible(bool bVisible);
 
-private:
-	void SetIsVisible(bool bVisible)
-	{
-		if (MeshComponent)
-		{
-			MeshComponent->SetMeshSectionVisible(CurrentLOD, bVisible);
-		}
-	};	
+	void DeleteMesh();
 };

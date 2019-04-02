@@ -16,6 +16,7 @@ class UTexture2D;
 class AStaticMeshActor;
 struct FMeshData;
 struct FLinearColor;
+class FTerrainGeneratorWorker;
 
 
 USTRUCT(BlueprintType)
@@ -84,7 +85,7 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = -1, ClampMax = 6), Category = "Map Generator|General")
 	int32 EditorPreviewLevelOfDetail = -1;
 
-	/* The scale of each chunk. */
+	/* The scale of each chunk. MapScale * MapChunkSize * NumberOfChunks = Total map width in cm. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|General")
 	float MapScale = 100.0f;
 
@@ -102,15 +103,15 @@ protected:
 
 public:
 	/* The map chunk size. This is the number of vertices per line, per chunk.
-	 * Change witch caution. Default is 241. */
-	static const int32 MapChunkSize = 241;
+	 * Change witch caution. Default is 240. */
+	static const int32 MapChunkSize = 240;
 
 private:	
-	//TQueue<FMapThreadInfo<FMapData>, EQueueMode::Mpsc> MapDataThreadInfoQueue;	
-	TQueue<FMapThreadInfo<FMeshData>, EQueueMode::Mpsc> MeshDataThreadInfoQueue;
-	
 	FCriticalSection CriticalSectionMapDataQueue;
 	FCriticalSection CriticalSectionMeshDataQueue;
+
+	TArray<FTerrainGeneratorWorker*> WorkerThreads;
+	TArray<UTerrainChunk*> Chunks;
 
 
 	/////////////////////////////////////////////////////

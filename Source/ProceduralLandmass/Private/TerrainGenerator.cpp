@@ -10,6 +10,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Public/UnityLibrary.h"
 #include "PerlinNoiseGenerator.h"
+#include "TerrainGeneratorWorker.h"
 
 
 ATerrainGenerator::ATerrainGenerator()
@@ -36,123 +37,58 @@ void ATerrainGenerator::Tick(float DeltaSeconds)
 		threadInfo.Callback(threadInfo.Parameter);
 	}*/
 
-	if (!MeshDataThreadInfoQueue.IsEmpty() && !CriticalSectionMeshDataQueue.TryLock())
+	/*if (!MeshDataThreadInfoQueue.IsEmpty() && !CriticalSectionMeshDataQueue.TryLock())
 	{
 		FMapThreadInfo<FMeshData> threadInfo;
 		MeshDataThreadInfoQueue.Dequeue(threadInfo);
 		threadInfo.Callback(threadInfo.Parameter);
-	}
+	}*/
 }
 
 /////////////////////////////////////////////////////
 void ATerrainGenerator::GenerateMap(bool bCreateNewMesh /*= false*/)
 {
+	const int32 numThreads = Configuration.NumberOfThreads;
+	if (WorkerThreads.Num() != 0)
+	{
+		/* Clean all current worker threads. */
+		for (FTerrainGeneratorWorker* worker : WorkerThreads)
+		{
+			worker->bKill = true;
+		}
+
+		WorkerThreads.Empty(numThreads);
+	}
+
+	for (int32 i = 0; i < numThreads; i++)
+	{
+		WorkerThreads[i] = new FTerrainGeneratorWorker();
+	}
+
+	/* Clean up chunks. */
+	const int32 numberOfChunks = Configuration.NumChunksPerDirection * 2;
+	if (Chunks.Num() != numberOfChunks)
+	{
+		for (UTerrainChunk* chunk : Chunks)
+		{
+			chunk->DestroyComponent();
+		}
+
+		Chunks.SetNum(0);
+	}
+
+	for (int32 i = 0; i < numberOfChunks; ++i)
+	{
+		Chunks[i]->ClearAllMeshSections();
+		
+	}
 	
-	//GenerateMapData(FVector2D::ZeroVector);
-
-	//DrawMap(mapData.HeightMap, mapData.ColorMap);
-}
-
-//FMapData ATerrainGenerator::GenerateMapData(FVector2D center)
-//{
-//	FArray2D noiseMap = GenerateNoiseMap(MapChunkSize, NoiseScale, Lacunarity, Octaves, Persistance, false, center + Offset, Seed);
-//
-//	TArray<FLinearColor> colorMap = TArray<FLinearColor>(); colorMap.SetNum(MapChunkSize * MapChunkSize);
-//	if (Regions.Num() > 0)
-//	{
-//		/* Iterate over the noise map and based of the height value set the region color to the color map. */
-//		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
-//		{
-//			for (const FTerrainType& region : Regions)
-//			{
-//				if (height <= region.StartHeight)
-//				{
-//					colorMap[y * MapChunkSize + x] = region.Color;
-//					break;
-//				}
-//			}
-//		});
-//	}
-//	else
-//	{
-//		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
-//		{
-//			colorMap[y * MapChunkSize + x] = FLinearColor(height, height, height);
-//		});
-//	}
-//
-//	return FMapData(noiseMap, colorMap, FVector(center + Offset, 0.0f) * 100.0f);
-//}
-
-/////////////////////////////////////////////////////
-FArray2D ATerrainGenerator::GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance /*= 0.5f*/, bool bOptimiseNormalization /*= false*/, const FVector2D& offset /*= FVector2D::ZeroVector*/, int32 seed /*= 42*/)
-{
-	FArray2D noiseMap = FArray2D(mapSize, mapSize);
-
-	/* Initialize a random number generator struct and seed it with the given value. */
-	FRandomStream random(seed);
-
-	TArray<FVector2D> octaveOffsets; octaveOffsets.SetNum(octaves);
-	for (FVector2D& offsetVec : octaveOffsets)
+	const int32 maxLOD = Configuration.LODs.Last().LOD;
+	for (int32 i = 0; i < numberOfChunks; i++)
 	{
-		float offsetX = random.FRandRange(-1000.0f, 1000.0f) + offset.X;
-		float offsetY = random.FRandRange(-1000.0f, 1000.0f) + offset.Y;
-		offsetVec = FVector2D(offsetX, offsetY);
+		FMeshDataJob newJob = FMeshDataJob(Configuration.NoiseGenerator, , Configuration.Amplitude, maxLOD, Configuration.ChunkSize, Configuration.HeightCurve);
+		WorkerThreads[i % numThreads]->PendingJobs.Enqueue(newJob);
 	}
-
-	const float halfSize = mapSize / 2.0;
-
-	/* The actual min value in the noise map. */
-	float minValue = 1.0f / SMALL_NUMBER;
-
-	/* The actual max value in the noise map. */
-	float maxValue = SMALL_NUMBER;
-
-	/* The calculated theoretical highest value. */
-	float limit = 0.0f;
-	for (int32 i = 0; i < octaves; i++)
-	{
-		limit += FMath::Pow(persistance, i);
-	}
-
-	const auto generateNoise = [&](float& value, int32 x, int32 y)
-	{
-		float amplitude = 1.0f;
-		float frequency = 1.0f;
-		float noiseHeight = 0.0f;
-
-		for (const FVector2D& octaveOffset : octaveOffsets)
-		{
-			const float sampleX = (x - halfSize) / scale * frequency + octaveOffset.X;
-			const float sampleY = (y - halfSize) / scale * frequency + octaveOffset.Y;
-
-			const float perlinValue = UUnityLibrary::PerlinNoise(sampleX, sampleY);
-			noiseHeight += perlinValue * amplitude;
-
-			amplitude *= persistance;
-			frequency *= lacunarity;
-		}
-
-		if (noiseHeight > maxValue)
-		{
-			maxValue = noiseHeight;
-		}
-		else if (noiseHeight < minValue)
-		{
-			minValue = noiseHeight;
-		}
-
-		value = bOptimiseNormalization ? UKismetMathLibrary::NormalizeToRange(noiseHeight, -limit, limit) : noiseHeight;
-	};
-	noiseMap.ForEachWithIndex(generateNoise);
-
-	if (!bOptimiseNormalization)
-	{
-		const auto normalizeValue = [minValue, maxValue](float& value) { value = UKismetMathLibrary::NormalizeToRange(value, minValue, maxValue); };
-		noiseMap.ForEach(normalizeValue);
-	}
-
-	return noiseMap;
 }
 
 /////////////////////////////////////////////////////

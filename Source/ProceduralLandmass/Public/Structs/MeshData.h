@@ -36,13 +36,12 @@ public:
 	 * Creates a mesh data struct with the given data.
 	 * Safes the height map in the red vertex color channel. This version of the height map is compressed, because the vertex color is only 8 bit (Values in range 0-255).
 	 * The generated mesh data is centered, so the mesh component's central location will be at the mesh's center.
-	 * @param targetMeshSize The target mesh size in cm. If <= 0 we will use the height map width as size.
 	 */
-	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, int32 targetMeshSize = 0, const UCurveFloat* heightCurve = nullptr)
+	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const UCurveFloat* heightCurve = nullptr)
 	{
 		LOD = levelOfDetail;
 
-		const int32 meshSize = targetMeshSize <= 0 ? heightMap.GetWidth() : targetMeshSize;
+		const int32 meshSize = heightMap.GetWidth();
 		const float topLeftX = (meshSize - 1) / -2.0f;
 		const float topLeftY = (meshSize - 1) / 2.0f;
 

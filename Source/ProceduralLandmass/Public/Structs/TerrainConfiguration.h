@@ -21,6 +21,10 @@ public:
 	 * Settings this to 0 will use one thread per chunk to generate. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
 	uint8 NumberOfThreads = 1;
+
+	/* Number of vertices per direction per chunk. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 120))
+	int32 ChunkSize = 240;
 		
 	/** Number of chunks per axis we will generate. So the entire generated terrain will consist of 2 times this many chunks. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
@@ -29,6 +33,9 @@ public:
 	/** Multiplier for height map. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 1.0f))
 	float Amplitude = 5000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UCurveFloat* HeightCurve;
 	
 	/** If checked and numLODs > 1, material will be instanced and TerrainOpacity parameters used to dither LOD transitions. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
