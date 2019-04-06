@@ -4,6 +4,7 @@
 #include "NoiseGeneratorInterface.h"
 #include "HAL/RunnableThread.h"
 
+int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
 FTerrainGeneratorWorker::FTerrainGeneratorWorker()
 {
@@ -12,7 +13,7 @@ FTerrainGeneratorWorker::FTerrainGeneratorWorker()
 	bKill = false;
 	bPause = false;
 
-	FString threadName = TEXT("Terrain Generator Worker Thread #") + FString::FromInt(ThreadCounter++);
+	const FString threadName = TEXT("Terrain Generator Worker Thread #") + FString::FromInt(GetNewThreadNumber());
 	Thread = FRunnableThread::Create(this, *threadName);
 }
 
@@ -43,7 +44,7 @@ uint32 FTerrainGeneratorWorker::Run()
 		const bool bHasJob = PendingJobs.Dequeue(currentJob);
 		if (!bHasJob)
 		{
-			/* No jobs left, we wait a little and then put ourself to sleep if we still don't have any job. */
+			/* No jobs left, we wait a little and then put our self to sleep if we still don't have any job. */
 			Semaphore->Wait(1000/60);
 			if (PendingJobs.IsEmpty())
 			{

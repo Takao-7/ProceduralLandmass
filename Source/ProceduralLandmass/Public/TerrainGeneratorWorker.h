@@ -3,7 +3,6 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Runnable.h"
-#include "Array2D.h"
 #include "Queue.h"
 #include "MeshDataJob.h"
 #include "ThreadSafeBool.h"
@@ -51,7 +50,9 @@ private:
 	/* The thread we are running on. */
 	FRunnableThread* Thread;
 
-	static uint32 ThreadCounter;
+	static int32 ThreadCounter;
+
+	static int32 GetNewThreadNumber() { return ++ThreadCounter; };
 
 
 	/////////////////////////////////////////////////////
@@ -62,5 +63,4 @@ public:
 	virtual uint32 Run() override;
 	virtual void Stop() override { Pause(); };
 	virtual void Exit() override {};
-
 };

@@ -57,7 +57,7 @@ void UEndlessTerrain::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ChunkSize = ATerrainGenerator::MapChunkSize - 1;
+	ChunkSize = 240;
 	MaxViewDistance = DetailLevels.Last().VisibleDistanceThreshold;
 	ChunksVisibleInViewDistance = FMath::RoundToInt(MaxViewDistance / (ChunkSize * 100.0f));
 	TerrainGenerator = Cast<ATerrainGenerator>(GetOwner());

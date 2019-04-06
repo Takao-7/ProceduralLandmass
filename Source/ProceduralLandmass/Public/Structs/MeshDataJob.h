@@ -1,10 +1,10 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "TerrainChunk.h"
+#include "TerrainGenerator.h"
 #include "MeshDataJob.generated.h"
 
 
-class ATerrainGenerator;
 class UCurveFloat;
 struct FMeshData;
 struct FArray2D;
@@ -23,29 +23,29 @@ struct FMeshDataJob
 public:
 	/////////////////////////////////////////////////////
 	/* The terrain generator we are doing this job for. */
-	ATerrainGenerator* MyGenerator;
+	ATerrainGenerator* MyGenerator = nullptr;
 	
 	/* The chunk that the generated mesh data is for. */
-	UTerrainChunk* Chunk;
+	UTerrainChunk* Chunk = nullptr;
 
 	/////////////////////////////////////////////////////
 	/* The noise generator that will be used to generate the mesh data. */
-	INoiseGeneratorInterface* NoiseGenerator;
+	INoiseGeneratorInterface* NoiseGenerator = nullptr;
 
 	/* Multiply each hight map value with this value. */
-	float HeightMultiplier;
+	float HeightMultiplier = 0.0f;
 
 	/* For which level of detail the mesh data will be generated. */
-	int32 LevelOfDetail;
+	int32 LevelOfDetail = 0;
 
 	/* Number of vertices per edge at LOD 0. So the mesh has 2x this many vertices. */
-	int32 ChunkSize;
+	int32 ChunkSize = 0;
 
 	/* Add this offset to the noise generator input. */
-	FVector2D Offset;
+	FVector2D Offset = FVector2D::ZeroVector;
 
 	/* A height curve to multiply the vertex height with. Optional. */
-	UCurveFloat* HeightCurve;
+	UCurveFloat* HeightCurve = nullptr;
 	
 	/////////////////////////////////////////////////////
 	/* The generated mesh data. */
@@ -66,8 +66,8 @@ public:
 	 * @param offset Add this offset to the noise generator input. This will shift the noise map by this value.
 	 * @param heightCurve (Optional) Height curve to multiply the vertex height with. The X-axis represents the noise generator output (0..1) and the Y axis the modifier.
 	 */
-	FMeshDataJob(INoiseGeneratorInterface* noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 targetMeshSize, int32 chunkSize, FVector2D offset, UCurveFloat* heightCurve = nullptr)
-						: NoiseGenerator(noiseGenerator), Chunk(chunk), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), ChunkSize(chunkSize), Offset(offset), HeightCurve(heightCurve)
+	FMeshDataJob(INoiseGeneratorInterface* noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 chunkSize, FVector2D offset, UCurveFloat* heightCurve = nullptr)
+						: Chunk(chunk), NoiseGenerator(noiseGenerator), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), ChunkSize(chunkSize), Offset(offset), HeightCurve(heightCurve)
 	{
 		MyGenerator = Cast<ATerrainGenerator>(chunk->GetOwner());
 	};

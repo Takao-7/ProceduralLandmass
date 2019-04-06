@@ -8,6 +8,7 @@
 #include "TerrainGenerator.generated.h"
 
 
+class UTerrainChunk;
 class UProceduralMeshComponent;
 class UMaterial;
 class UCurveFloat;
@@ -101,11 +102,6 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
 	UCurveFloat* MeshHeightCurve;
 
-public:
-	/* The map chunk size. This is the number of vertices per line, per chunk.
-	 * Change witch caution. Default is 240. */
-	static const int32 MapChunkSize = 240;
-
 private:	
 	FCriticalSection CriticalSectionMapDataQueue;
 	FCriticalSection CriticalSectionMeshDataQueue;
@@ -128,31 +124,25 @@ protected:
 	bool ShouldGenerateMap() const { return bAutoUpdate || bGenerateMap; };
 
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void GenerateMap(bool bCreateNewMesh = false);
-
-	/*UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void GenerateMapData(FVector2D center);*/
+	void GenerateMap();
 
 	static FArray2D GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance = 0.5f, bool bOptimiseNormalization = false, const FVector2D& offset = FVector2D::ZeroVector, int32 seed = 42);
 
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void DrawMap(FArray2D &noiseMap, TArray<FLinearColor> colorMap);
 
-	virtual void BeginPlay() override;
-	virtual void Tick(float DeltaSeconds) override;
-	
 public:	
 	// Sets default values for this actor's properties
 	ATerrainGenerator();
+
+	/* Returns the terrain size (in cm) along one direction. So the total terrain area is 2x this value. */
+	float GetTerrainSize() const { return MapScale * Configuration.ChunkSize * Configuration.NumChunksPerDirection; };
 
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	static UTexture2D* TextureFromColorMap(const TArray<FLinearColor>& colorMap);
 
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	static UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
-
-	UFUNCTION(BlueprintPure, Category = "Map Generator")
-	static int32 GetMapChunkSize() { return MapChunkSize; };
 	
 	/*void RequestMapData(FVector2D center, TFunction<void (FMapData)> callback);
 	void MapDataThread(FVector2D center, TFunction<void (FMapData)> callback);*/

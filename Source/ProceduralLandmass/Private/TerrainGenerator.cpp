@@ -11,6 +11,7 @@
 #include "Public/UnityLibrary.h"
 #include "PerlinNoiseGenerator.h"
 #include "TerrainGeneratorWorker.h"
+#include "Public/TerrainChunk.h"
 
 
 ATerrainGenerator::ATerrainGenerator()
@@ -18,76 +19,57 @@ ATerrainGenerator::ATerrainGenerator()
 	PrimaryActorTick.bCanEverTick = true;
 	bRunConstructionScriptOnDrag = false;
 
-	RootComponent = Cast<USceneComponent>(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
-}
-
-void ATerrainGenerator::BeginPlay()
-{
-	Super::BeginPlay();
-}
-
-void ATerrainGenerator::Tick(float DeltaSeconds)
-{
-	Super::Tick(DeltaSeconds);
-
-	/*if (!MapDataThreadInfoQueue.IsEmpty() && !CriticalSectionMapDataQueue.TryLock())
-	{
-		FMapThreadInfo<FMapData> threadInfo;
-		MapDataThreadInfoQueue.Dequeue(threadInfo);
-		threadInfo.Callback(threadInfo.Parameter);
-	}*/
-
-	/*if (!MeshDataThreadInfoQueue.IsEmpty() && !CriticalSectionMeshDataQueue.TryLock())
-	{
-		FMapThreadInfo<FMeshData> threadInfo;
-		MeshDataThreadInfoQueue.Dequeue(threadInfo);
-		threadInfo.Callback(threadInfo.Parameter);
-	}*/
+	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::GenerateMap(bool bCreateNewMesh /*= false*/)
+void ATerrainGenerator::GenerateMap()
 {
-	const int32 numThreads = Configuration.NumberOfThreads;
+	const int32 numThreads = Configuration.GetNumberOfThreads();
+	const int32 chunksPerDirection = Configuration.NumChunksPerDirection;	
+	const int32 chunkSize = Configuration.ChunkSize;
+	const int32 maxLOD = Configuration.LODs.Last().LOD;
+	INoiseGeneratorInterface* noiseGenerator = static_cast<INoiseGeneratorInterface*>(Configuration.NoiseGenerator.GetInterface());
+	
+	/* Clean all current worker threads. */
 	if (WorkerThreads.Num() != 0)
 	{
-		/* Clean all current worker threads. */
-		for (FTerrainGeneratorWorker* worker : WorkerThreads)
-		{
-			worker->bKill = true;
-		}
-
 		WorkerThreads.Empty(numThreads);
 	}
 
+	/* Create new worker threads. */
 	for (int32 i = 0; i < numThreads; i++)
 	{
 		WorkerThreads[i] = new FTerrainGeneratorWorker();
 	}
 
 	/* Clean up chunks. */
-	const int32 numberOfChunks = Configuration.NumChunksPerDirection * 2;
-	if (Chunks.Num() != numberOfChunks)
+	if (Chunks.Num() != 0)
 	{
-		for (UTerrainChunk* chunk : Chunks)
-		{
-			chunk->DestroyComponent();
-		}
-
-		Chunks.SetNum(0);
+		const int32 totalNumberOfChunks = chunksPerDirection * 2;
+		Chunks.Empty(totalNumberOfChunks);
 	}
 
-	for (int32 i = 0; i < numberOfChunks; ++i)
-	{
-		Chunks[i]->ClearAllMeshSections();
-		
-	}
+	/* Calculate the top positions for chunks. */
+	const int32 totalHeight = chunkSize * chunksPerDirection;
+	const float topLeftPositionX = (totalHeight - chunkSize) / -2.0f;
+	const float topLeftPositionY = (totalHeight - chunkSize) / 2.0f;
 	
-	const int32 maxLOD = Configuration.LODs.Last().LOD;
-	for (int32 i = 0; i < numberOfChunks; i++)
+	/* Create chunks, mesh data jobs and add them to the worker threads. */
+	for (int32 y = 0; y < chunksPerDirection; ++y)
 	{
-		FMeshDataJob newJob = FMeshDataJob(Configuration.NoiseGenerator, , Configuration.Amplitude, maxLOD, Configuration.ChunkSize, Configuration.HeightCurve);
-		WorkerThreads[i % numThreads]->PendingJobs.Enqueue(newJob);
+		for (int32 x = 0; x < chunksPerDirection; ++x)
+		{
+			const int32 i = y + x;
+			const FVector2D offset = FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY + (y * chunkSize));
+			
+			const FString chunkName = FString::Printf(TEXT("Terrain chunk %s"), i);
+			Chunks[i] = CreateDefaultSubobject<UTerrainChunk>(*chunkName);
+			Chunks[i]->SetRelativeLocation(FVector(offset, 0.0f));
+			
+			FMeshDataJob newJob = FMeshDataJob(noiseGenerator, Chunks[i], Configuration.Amplitude, maxLOD, chunkSize, offset, Configuration.HeightCurve);
+			WorkerThreads[i % numThreads]->PendingJobs.Enqueue(newJob);
+		}
 	}
 }
 

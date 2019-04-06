@@ -49,7 +49,9 @@ protected:
 
 	/* Our terrain generator */
 	UPROPERTY(BlueprintReadWrite)
-	ATerrainGenerator* TerrainGenerator;	
+	ATerrainGenerator* TerrainGenerator;
+	
+	float ChunkSize;
 
 private:
 	TArray<FLODInfo>* DetailLevels;
