@@ -45,12 +45,13 @@ public:
 		const float topLeftX = (meshSize - 1) / -2.0f;
 		const float topLeftY = (meshSize - 1) / 2.0f;
 
-		const int32 meshSimplificationIncrement = levelOfDetail == 0 ? 1 : levelOfDetail * 2;
+		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
 		const int32 verticesPerLine = (meshSize - 1) / meshSimplificationIncrement + 1;
 
 		Vertices.SetNum(verticesPerLine * verticesPerLine);
 		Triangles.SetNum((verticesPerLine - 1) * (verticesPerLine - 1) * 6);
 		UVs.SetNum(verticesPerLine * verticesPerLine);
+		VertexColors.SetNum(verticesPerLine * verticesPerLine);
 
 		int32 vertexIndex = 0;
 		for (int32 y = 0; y < meshSize; y += meshSimplificationIncrement)
@@ -80,16 +81,22 @@ public:
 
 private:
 	/////////////////////////////////////////////////////
+	int32 triangleIndex = 0;
+
 	void AddTriangle(int32 a, int32 b, int32 c)
 	{
+		if(!Triangles.IsValidIndex(triangleIndex))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Triangle index '%d' invalid!"), triangleIndex);
+			return;
+		}
+
 		Triangles[triangleIndex] = a;
 		Triangles[triangleIndex + 1] = b;
 		Triangles[triangleIndex + 2] = c;
 
 		triangleIndex += 3;
 	};
-
-	int32 triangleIndex = 0;
 
 public:
 	/////////////////////////////////////////////////////

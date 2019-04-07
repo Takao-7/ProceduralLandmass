@@ -1,11 +1,10 @@
 #include "TerrainChunk.h"
 #include "TerrainGenerator.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 
-void UTerrainChunk::InitChunk(const FVector2D& coordinates, float viewDistance, int32 size, float scale, ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, AActor* viewer, float zPosition /*= 0.0f*/)
+void UTerrainChunk::InitChunk(float viewDistance, ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, AActor* viewer, float zPosition /*= 0.0f*/)
 {
-	this->ChunkSize = (float)size * scale;
-	this->Location = FVector(coordinates * ChunkSize, zPosition);
 	this->MaxViewDistance = viewDistance;
 	this->DetailLevels = lodInfoArray;
 	this->Viewer = viewer;
@@ -18,9 +17,11 @@ void UTerrainChunk::InitChunk(const FVector2D& coordinates, float viewDistance, 
 		//LODmeshes[i] = FLODMesh((*DetailLevels)[i].LOD, TerrainGenerator);
 	}
 
-	AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
-	RegisterComponent();
-	parentTerrainGenerator->AddOwnedComponent(this);
+	const bool bSuccessFullyAttached = AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+	if(!bSuccessFullyAttached)
+	{
+		UKismetSystemLibrary::PrintString(this, TEXT("Terrain chunk not successfuly attached!"));
+	}
 }
 
 bool UTerrainChunk::UpdateTerrainChunk()
@@ -33,7 +34,7 @@ bool UTerrainChunk::UpdateTerrainChunk()
 	const FVector viewerPosition = Viewer ? Viewer->GetActorLocation() : FVector::ZeroVector;
 	const float viewerDistanceToCenter = FVector::Distance(Location, viewerPosition);
 
-	const bool bIsVisible = (viewerDistanceToCenter <= MaxViewDistance) || viewerDistanceToCenter < ChunkSize;
+	const bool bIsVisible = (viewerDistanceToCenter <= MaxViewDistance)/* || viewerDistanceToCenter < ChunkSize*/;
 	SetIsVisible(bIsVisible);
 
 	if (!bIsVisible)

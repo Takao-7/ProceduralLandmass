@@ -1,7 +1,6 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "TerrainChunk.h"
-#include "TerrainGenerator.h"
 #include "MeshDataJob.generated.h"
 
 
@@ -30,7 +29,7 @@ public:
 
 	/////////////////////////////////////////////////////
 	/* The noise generator that will be used to generate the mesh data. */
-	INoiseGeneratorInterface* NoiseGenerator = nullptr;
+	TScriptInterface<INoiseGeneratorInterface> NoiseGenerator = nullptr;
 
 	/* Multiply each hight map value with this value. */
 	float HeightMultiplier = 0.0f;
@@ -66,9 +65,9 @@ public:
 	 * @param offset Add this offset to the noise generator input. This will shift the noise map by this value.
 	 * @param heightCurve (Optional) Height curve to multiply the vertex height with. The X-axis represents the noise generator output (0..1) and the Y axis the modifier.
 	 */
-	FMeshDataJob(INoiseGeneratorInterface* noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 chunkSize, FVector2D offset, UCurveFloat* heightCurve = nullptr)
+	FMeshDataJob(TScriptInterface<INoiseGeneratorInterface> noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 chunkSize, FVector2D offset, UCurveFloat* heightCurve = nullptr)
 						: Chunk(chunk), NoiseGenerator(noiseGenerator), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), ChunkSize(chunkSize), Offset(offset), HeightCurve(heightCurve)
 	{
-		MyGenerator = Cast<ATerrainGenerator>(chunk->GetOwner());
+		MyGenerator = reinterpret_cast<ATerrainGenerator*>(chunk->GetOwner());
 	};
 };

@@ -44,9 +44,9 @@ void UEndlessTerrain::UpdateVisibleChunks()
 			}
 			else
 			{
-				FName chunkName = *FString::Printf(TEXT("Chunk %s"), *viewedChunkCoord.ToString());
+				const FName chunkName = *FString::Printf(TEXT("Chunk %s"), *viewedChunkCoord.ToString());
 				UTerrainChunk* newChunk = NewObject<UTerrainChunk>(TerrainGenerator, chunkName);
-				newChunk->InitChunk(viewedChunkCoord, MaxViewDistance, ChunkSize, 100.0f, TerrainGenerator, &DetailLevels, GetViewActor());
+				newChunk->InitChunk(MaxViewDistance, TerrainGenerator, &DetailLevels, GetViewActor());
 				TerrainChunkDictionary.Add(viewedChunkCoord, newChunk);
 			}
 		}

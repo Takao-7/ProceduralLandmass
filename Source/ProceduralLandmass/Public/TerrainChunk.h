@@ -50,8 +50,6 @@ protected:
 	/* Our terrain generator */
 	UPROPERTY(BlueprintReadWrite)
 	ATerrainGenerator* TerrainGenerator;
-	
-	float ChunkSize;
 
 private:
 	TArray<FLODInfo>* DetailLevels;
@@ -65,15 +63,14 @@ private:
 public:
 	UTerrainChunk() {};
 
-	void InitChunk(const FVector2D& coordinates, float viewDistance, int32 size, float scale,
-		ATerrainGenerator* terrainGenerator, TArray<FLODInfo>* lodInfoArray, AActor* viewer, float zPosition = 0.0f);
+	void InitChunk(float viewDistance, ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, AActor* viewer, float zPosition = 0.0f);
 
 	/* Updates this chunk's visibility based on the viewer position. If the distance to the given position is
 	 * smaller than the MaxViewDistance, than this chunk will be set to visible.
 	 * @return The new visibility. */
 	bool UpdateTerrainChunk();
 
-	bool IsVisible() const { return MeshComponent && MeshComponent->IsMeshSectionVisible(CurrentLOD); };
+	bool IsChunkVisible() const { return MeshComponent && MeshComponent->IsMeshSectionVisible(CurrentLOD); };
 	void SetIsVisible(bool bVisible);
 
 	void DeleteMesh();

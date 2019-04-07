@@ -21,9 +21,6 @@ class PROCEDURALLANDMASS_API FTerrainGeneratorWorker : public FRunnable
 public:
 	/* Job queue for this worker. */
 	TQueue<FMeshDataJob, EQueueMode::Spsc> PendingJobs;
-	
-	/* Queue for finished jobs */
-	TQueue<FMeshDataJob, EQueueMode::Spsc> FinishedJobs;
 
 	/* Should this thread be killed? */
 	FThreadSafeBool bKill = false;

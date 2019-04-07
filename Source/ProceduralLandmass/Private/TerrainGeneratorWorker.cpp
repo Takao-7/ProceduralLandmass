@@ -3,6 +3,7 @@
 #include "TerrainGeneratorWorker.h"
 #include "NoiseGeneratorInterface.h"
 #include "HAL/RunnableThread.h"
+#include "TerrainGenerator.h"
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
@@ -49,8 +50,8 @@ uint32 FTerrainGeneratorWorker::Run()
 			if (PendingJobs.IsEmpty())
 			{
 				Semaphore->Wait();
-				continue;
 			}
+			continue;;
 		}
 
 		const int32 size = currentJob.ChunkSize;
@@ -59,12 +60,16 @@ uint32 FTerrainGeneratorWorker::Run()
 		FArray2D* heightMap = new FArray2D(size, size);
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
 		{
-			value = currentJob.NoiseGenerator->GetNoise2D(xIndex + offsetX, yIndex + offsetY);
+			UObject* noiseGenerator = currentJob.NoiseGenerator.GetObject();
+			value = INoiseGeneratorInterface::Execute_GetNoise2D(noiseGenerator, xIndex + offsetX, yIndex + offsetY);
 		});
 
 		currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.LevelOfDetail, currentJob.HeightCurve);
 		currentJob.GeneratedHeightMap = heightMap;
-		FinishedJobs.Enqueue(currentJob);
+		
+		currentJob.MyGenerator->CriticalSectionMeshDataQueue.Lock();
+		currentJob.MyGenerator->FinishedMeshDataJobs.Enqueue(currentJob);
+		currentJob.MyGenerator->CriticalSectionMeshDataQueue.Unlock();
 	}
 
 	return 0;
@@ -80,12 +85,6 @@ void FTerrainGeneratorWorker::ClearJobQueue()
 {
 	FMeshDataJob job;
 	while (PendingJobs.Dequeue(job))
-	{
-		delete job.GeneratedHeightMap;
-		delete job.GeneratedMeshData;
-	}
-
-	while (FinishedJobs.Dequeue(job))
 	{
 		delete job.GeneratedHeightMap;
 		delete job.GeneratedMeshData;

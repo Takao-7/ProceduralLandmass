@@ -29,13 +29,14 @@ void ATerrainGenerator::GenerateMap()
 	const int32 chunksPerDirection = Configuration.NumChunksPerDirection;	
 	const int32 chunkSize = Configuration.ChunkSize;
 	const int32 maxLOD = Configuration.LODs.Last().LOD;
-	INoiseGeneratorInterface* noiseGenerator = static_cast<INoiseGeneratorInterface*>(Configuration.NoiseGenerator.GetInterface());
+	
 	
 	/* Clean all current worker threads. */
 	if (WorkerThreads.Num() != 0)
 	{
 		WorkerThreads.Empty(numThreads);
 	}
+	WorkerThreads.SetNum(numThreads);		
 
 	/* Create new worker threads. */
 	for (int32 i = 0; i < numThreads; i++)
@@ -44,17 +45,18 @@ void ATerrainGenerator::GenerateMap()
 	}
 
 	/* Clean up chunks. */
+	const int32 totalNumberOfChunks = chunksPerDirection * 2;
 	if (Chunks.Num() != 0)
 	{
-		const int32 totalNumberOfChunks = chunksPerDirection * 2;
 		Chunks.Empty(totalNumberOfChunks);
 	}
+	Chunks.SetNum(totalNumberOfChunks);
 
 	/* Calculate the top positions for chunks. */
 	const int32 totalHeight = chunkSize * chunksPerDirection;
 	const float topLeftPositionX = (totalHeight - chunkSize) / -2.0f;
 	const float topLeftPositionY = (totalHeight - chunkSize) / 2.0f;
-	
+
 	/* Create chunks, mesh data jobs and add them to the worker threads. */
 	for (int32 y = 0; y < chunksPerDirection; ++y)
 	{
@@ -63,14 +65,19 @@ void ATerrainGenerator::GenerateMap()
 			const int32 i = y + x;
 			const FVector2D offset = FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY + (y * chunkSize));
 			
-			const FString chunkName = FString::Printf(TEXT("Terrain chunk %s"), i);
-			Chunks[i] = CreateDefaultSubobject<UTerrainChunk>(*chunkName);
-			Chunks[i]->SetRelativeLocation(FVector(offset, 0.0f));
+			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
+			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
+			newChunk->InitChunk(10000.0f, this, &Configuration.LODs, nullptr, 0.0f);
+			newChunk->SetRelativeLocation(FVector(offset, 0.0f));
 			
-			FMeshDataJob newJob = FMeshDataJob(noiseGenerator, Chunks[i], Configuration.Amplitude, maxLOD, chunkSize, offset, Configuration.HeightCurve);
+			FMeshDataJob newJob = FMeshDataJob(Configuration.NoiseGenerator, newChunk, Configuration.Amplitude, maxLOD, chunkSize, offset, Configuration.HeightCurve);
 			WorkerThreads[i % numThreads]->PendingJobs.Enqueue(newJob);
+
+			Chunks[i] = newChunk;
 		}
 	}
+
+	SetActorScale3D(FVector(MapScale));
 }
 
 /////////////////////////////////////////////////////
@@ -153,6 +160,22 @@ UTexture2D* ATerrainGenerator::TextureFromHeightMap(const FArray2D& heightMap)
 	}
 
 	return TextureFromColorMap(colorMap);
+}
+
+void ATerrainGenerator::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	FMeshDataJob job;
+	if(FinishedMeshDataJobs.Dequeue(job))
+	{
+		FMeshData* meshData = job.GeneratedMeshData;
+		job.Chunk->bUseAsyncCooking = true;
+		job.Chunk->CreateMeshSection(0, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, true);
+
+		//delete job.GeneratedMeshData;
+		//delete job.GeneratedHeightMap;
+	}
 }
 
 /////////////////////////////////////////////////////

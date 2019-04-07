@@ -5,6 +5,7 @@
 #include "GameFramework/Actor.h"
 #include "Structs/MeshData.h"
 #include "Structs/TerrainConfiguration.h"
+#include "MeshDataJob.h"
 #include "TerrainGenerator.generated.h"
 
 
@@ -102,12 +103,15 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
 	UCurveFloat* MeshHeightCurve;
 
-private:	
-	FCriticalSection CriticalSectionMapDataQueue;
-	FCriticalSection CriticalSectionMeshDataQueue;
-
+private:
 	TArray<FTerrainGeneratorWorker*> WorkerThreads;
 	TArray<UTerrainChunk*> Chunks;
+
+public:
+	FCriticalSection CriticalSectionMeshDataQueue;
+
+	/* Queue for finished jobs */
+	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
 
 
 	/////////////////////////////////////////////////////
@@ -144,6 +148,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	static UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
 	
+	void Tick(float DeltaSeconds) override;
+
 	/*void RequestMapData(FVector2D center, TFunction<void (FMapData)> callback);
 	void MapDataThread(FVector2D center, TFunction<void (FMapData)> callback);*/
 
