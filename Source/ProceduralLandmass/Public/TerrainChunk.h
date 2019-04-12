@@ -53,7 +53,7 @@ protected:
 
 private:
 	TArray<FLODInfo>* DetailLevels;
-	TArray<FMeshData*> LODmeshes;
+	TArray<FMeshData*> LODMeshes;
 
 	int32 PreviousLOD = -1;
 	int32 CurrentLOD = 0;

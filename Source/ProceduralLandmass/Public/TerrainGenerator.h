@@ -6,6 +6,7 @@
 #include "Structs/MeshData.h"
 #include "Structs/TerrainConfiguration.h"
 #include "MeshDataJob.h"
+#include "Queue.h"
 #include "TerrainGenerator.generated.h"
 
 
@@ -87,10 +88,6 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = -1, ClampMax = 6), Category = "Map Generator|General")
 	int32 EditorPreviewLevelOfDetail = -1;
 
-	/* The scale of each chunk. MapScale * MapChunkSize * NumberOfChunks = Total map width in cm. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|General")
-	float MapScale = 100.0f;
-
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
 	FTerrainConfiguration Configuration;
 
@@ -108,8 +105,6 @@ private:
 	TArray<UTerrainChunk*> Chunks;
 
 public:
-	FCriticalSection CriticalSectionMeshDataQueue;
-
 	/* Queue for finished jobs */
 	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
 
@@ -140,7 +135,11 @@ public:
 	ATerrainGenerator();
 
 	/* Returns the terrain size (in cm) along one direction. So the total terrain area is 2x this value. */
-	float GetTerrainSize() const { return MapScale * Configuration.ChunkSize * Configuration.NumChunksPerDirection; };
+	float GetTerrainSize() const
+	{
+		const FVector scale = Configuration.MapScale;		
+		return scale.X * Configuration.GetNumVertices() * Configuration.NumChunks;
+	};
 
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	static UTexture2D* TextureFromColorMap(const TArray<FLinearColor>& colorMap);

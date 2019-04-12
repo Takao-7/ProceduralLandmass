@@ -28,7 +28,8 @@ protected:
 	float Limit = 0.0f;
 	
 public:
-	UPerlinNoiseGenerator() {};
+	UPerlinNoiseGenerator();
+	void InitNoiseGenerator();
 	UPerlinNoiseGenerator(int32 seed, float scale, int32 octaves, float persistance, float lacunarity, FVector2D offset = FVector2D::ZeroVector);
 
 	virtual float GetNoise2D_Implementation(float x, float y) override;

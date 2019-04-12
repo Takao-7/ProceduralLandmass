@@ -2,24 +2,29 @@
 
 #include "PerlinNoiseGenerator.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "UnityLibrary.h"
+
+UPerlinNoiseGenerator::UPerlinNoiseGenerator()
+{
+	InitNoiseGenerator();
+}
 
 UPerlinNoiseGenerator::UPerlinNoiseGenerator(int32 seed, float scale, int32 octaves, float persistance, float lacunarity, FVector2D offset/* = FVector2D::ZeroVector*/)
+	: Seed(seed), NoiseScale(scale), Octaves(octaves), Persistance(persistance), Lacunarity(lacunarity), Offset(offset)
 {
-	this->Seed;
-	this->NoiseScale;
-	this->Octaves;
-	this->Persistance;
-	this->Lacunarity;
-	this->Offset = offset;
+	InitNoiseGenerator();
+}
 
+void UPerlinNoiseGenerator::InitNoiseGenerator()
+{
 	/* Initialize a random number generator struct and seed it with the given value. */
 	FRandomStream Random(Seed);
 
 	OctaveOffsets.SetNum(Octaves);
 	for (FVector2D& offsetVec : OctaveOffsets)
 	{
-		float offsetX = Random.FRandRange(-1000.0f, 1000.0f) + Offset.X;
-		float offsetY = Random.FRandRange(-1000.0f, 1000.0f) + Offset.Y;
+		const float offsetX = Random.FRandRange(-1000.0f, 1000.0f) + Offset.X;
+		const float offsetY = Random.FRandRange(-1000.0f, 1000.0f) + Offset.Y;
 		offsetVec = FVector2D(offsetX, offsetY);
 	}
 
@@ -41,7 +46,7 @@ float UPerlinNoiseGenerator::GetNoise2D_Implementation(float x, float y)
 		const float sampleX = x / NoiseScale * frequency + octaveOffset.X;
 		const float sampleY = y / NoiseScale * frequency + octaveOffset.Y;
 
-		const float perlinValue = GetNoise2D(sampleX, sampleY);
+		const float perlinValue = UUnityLibrary::PerlinNoise(sampleX, sampleY);
 		noiseHeight += perlinValue * amplitude;
 
 		amplitude *= Persistance;

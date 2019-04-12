@@ -29,9 +29,8 @@ public:
 	/* The level of detail this mesh data represents. */
 	int32 LOD = 0;
 
-
 	/////////////////////////////////////////////////////
-	FMeshData() {};
+	FMeshData() {}
 	/**
 	 * Creates a mesh data struct with the given data.
 	 * Safes the height map in the red vertex color channel. This version of the height map is compressed, because the vertex color is only 8 bit (Values in range 0-255).
@@ -76,8 +75,8 @@ public:
 				vertexIndex++;
 			}
 		}
-	};
-	~FMeshData() {};
+	}
+	~FMeshData() {}
 
 private:
 	/////////////////////////////////////////////////////

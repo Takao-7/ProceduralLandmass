@@ -11,13 +11,13 @@ void UTerrainChunk::InitChunk(float viewDistance, ATerrainGenerator* parentTerra
 	this->TerrainGenerator = parentTerrainGenerator;
 
 	SetIsVisible(false);
-	LODmeshes.SetNum(DetailLevels->Num());
-	for (int32 i = 0; i < LODmeshes.Num(); i++)
+	LODMeshes.SetNum(DetailLevels->Num());
+	for (int32 i = 0; i < LODMeshes.Num(); i++)
 	{
-		//LODmeshes[i] = FLODMesh((*DetailLevels)[i].LOD, TerrainGenerator);
+		//LODMeshes[i] = FLODMesh((*DetailLevels)[i].LOD, TerrainGenerator);
 	}
 
-	const bool bSuccessFullyAttached = AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+	const bool bSuccessFullyAttached = AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::SnapToTargetIncludingScale);
 	if(!bSuccessFullyAttached)
 	{
 		UKismetSystemLibrary::PrintString(this, TEXT("Terrain chunk not successfuly attached!"));
@@ -60,7 +60,7 @@ bool UTerrainChunk::UpdateTerrainChunk()
 	{
 		PreviousLOD = CurrentLOD;
 
-		FMeshData* lodMesh = LODmeshes[CurrentLOD];
+		FMeshData* lodMesh = LODMeshes[CurrentLOD];
 		if (lodMesh)
 		{
 			lodMesh->CreateMesh(MeshComponent);

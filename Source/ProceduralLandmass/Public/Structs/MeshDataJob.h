@@ -31,14 +31,14 @@ public:
 	/* The noise generator that will be used to generate the mesh data. */
 	TScriptInterface<INoiseGeneratorInterface> NoiseGenerator = nullptr;
 
-	/* Multiply each hight map value with this value. */
+	/* Multiply each height map value with this value. */
 	float HeightMultiplier = 0.0f;
 
 	/* For which level of detail the mesh data will be generated. */
 	int32 LevelOfDetail = 0;
 
-	/* Number of vertices per edge at LOD 0. So the mesh has 2x this many vertices. */
-	int32 ChunkSize = 0;
+	/* Number of vertices per edge at LOD 0. So the mesh has this many vertices squared. */
+	int32 ChunkSize = 240;
 
 	/* Add this offset to the noise generator input. */
 	FVector2D Offset = FVector2D::ZeroVector;
@@ -59,9 +59,9 @@ public:
 	/**
 	 * @param noiseGenerator Noise generator to be used for generating the height map
 	 * @param chunk The chunk that we are creating the mesh data for.
-	 * @param heightMultiplier Multiply each hight map Z-value with this value.
+	 * @param heightMultiplier Multiply each height map Z-value with this value.
 	 * @param levelOfDetail The LOD for this mesh data.
-	 * @param chunkSize Number of vertices per edge at LOD 0. So the mesh has 2x this many vertices. This value is regardless of @see levelOfDetail!
+	 * @param chunkSize Number of vertices per edge at LOD 0. So the mesh has this many vertices squared. This value is regardless of the actual @see levelOfDetail.
 	 * @param offset Add this offset to the noise generator input. This will shift the noise map by this value.
 	 * @param heightCurve (Optional) Height curve to multiply the vertex height with. The X-axis represents the noise generator output (0..1) and the Y axis the modifier.
 	 */

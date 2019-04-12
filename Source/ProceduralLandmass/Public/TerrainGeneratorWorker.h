@@ -12,9 +12,10 @@ class FRunnableThread;
 
 
 /**
- * Class for generating mesh data.
+ * Worker thread for generating mesh data.
  * This thread will work through the PendingJobs queue until it's empty.
- * When it's empty, it will put itself to sleep until woken up.
+ * When it's empty, it will destroy itself.
+ * Will start in pause mode and must be 'activated' manually with @see UnPause().
  */
 class PROCEDURALLANDMASS_API FTerrainGeneratorWorker : public FRunnable
 {	
@@ -23,13 +24,18 @@ public:
 	TQueue<FMeshDataJob, EQueueMode::Spsc> PendingJobs;
 
 	/* Should this thread be killed? */
-	FThreadSafeBool bKill = false;
+	FThreadSafeBool bWorkFinished = false;
 
 	/* Put this thread to sleep at the end of it's current job. */
 	void Pause() { bPause = true; };
+
+	/* Un-pause this thread. */
 	void UnPause();
 
+	/* Clears the job queue and deletes the data inside. */
 	void ClearJobQueue();
+
+	static void DoWork(FMeshDataJob& currentJob);
 
 	FTerrainGeneratorWorker();
 	~FTerrainGeneratorWorker();
@@ -38,9 +44,6 @@ private:
 	/* Should this thread pause until woken up? (@see Semaphore). */
 	FThreadSafeBool bPause = false;
 
-	/* Critical section for locking variables (thread safety). */
-	FCriticalSection CriticalSection;
-
 	/* This will be used to let this thread wait until it is woken up the main thread. */
 	FEvent* Semaphore;
 
@@ -48,7 +51,6 @@ private:
 	FRunnableThread* Thread;
 
 	static int32 ThreadCounter;
-
 	static int32 GetNewThreadNumber() { return ++ThreadCounter; };
 
 

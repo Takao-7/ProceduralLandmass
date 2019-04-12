@@ -7,11 +7,13 @@
 #include "Engine/Texture2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Kismet/KismetMathLibrary.h"
 #include "Public/UnityLibrary.h"
 #include "PerlinNoiseGenerator.h"
 #include "TerrainGeneratorWorker.h"
 #include "Public/TerrainChunk.h"
+
+/* Do we want to use threading for generating mesh data? */
+#define NO_THREADS 1
 
 
 ATerrainGenerator::ATerrainGenerator()
@@ -26,58 +28,69 @@ ATerrainGenerator::ATerrainGenerator()
 void ATerrainGenerator::GenerateMap()
 {
 	const int32 numThreads = Configuration.GetNumberOfThreads();
-	const int32 chunksPerDirection = Configuration.NumChunksPerDirection;	
-	const int32 chunkSize = Configuration.ChunkSize;
+	const int32 chunksPerDirection = Configuration.NumChunks;	
+	const int32 chunkSize = Configuration.GetNumVertices();
 	const int32 maxLOD = Configuration.LODs.Last().LOD;
-	
-	
-	/* Clean all current worker threads. */
-	if (WorkerThreads.Num() != 0)
-	{
-		WorkerThreads.Empty(numThreads);
-	}
-	WorkerThreads.SetNum(numThreads);		
 
-	/* Create new worker threads. */
+	/* Create worker threads. */
+	WorkerThreads.Empty();
+	WorkerThreads.SetNum(numThreads);
 	for (int32 i = 0; i < numThreads; i++)
 	{
 		WorkerThreads[i] = new FTerrainGeneratorWorker();
-	}
+	}	
 
-	/* Clean up chunks. */
-	const int32 totalNumberOfChunks = chunksPerDirection * 2;
-	if (Chunks.Num() != 0)
+	const int32 totalNumberOfChunks = FMath::Pow(chunksPerDirection, 2);
+	if (Chunks.Num() != totalNumberOfChunks)
 	{
-		Chunks.Empty(totalNumberOfChunks);
+		Chunks.SetNum(totalNumberOfChunks);
 	}
-	Chunks.SetNum(totalNumberOfChunks);
 
-	/* Calculate the top positions for chunks. */
+	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
+	 * measured from their centers. */
+	const float topLeftChunkPositionX = (chunksPerDirection - 1) * chunkSize / -2.0f;
+	const float topLeftChunkPositionY = (chunksPerDirection - 1) * chunkSize / 2.0f;
+
+	/* The top positions. Used for noise generation. */
 	const int32 totalHeight = chunkSize * chunksPerDirection;
-	const float topLeftPositionX = (totalHeight - chunkSize) / -2.0f;
-	const float topLeftPositionY = (totalHeight - chunkSize) / 2.0f;
+	const float topLeftPositionX = totalHeight / -2.0f;
+	const float topLeftPositionY = totalHeight / 2.0f;
 
-	/* Create chunks, mesh data jobs and add them to the worker threads. */
+	/* Create mesh data jobs and add them to the worker threads. */
+	int32 i = 0;
 	for (int32 y = 0; y < chunksPerDirection; ++y)
 	{
 		for (int32 x = 0; x < chunksPerDirection; ++x)
 		{
-			const int32 i = y + x;
-			const FVector2D offset = FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY + (y * chunkSize));
-			
-			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
-			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
-			newChunk->InitChunk(10000.0f, this, &Configuration.LODs, nullptr, 0.0f);
-			newChunk->SetRelativeLocation(FVector(offset, 0.0f));
-			
-			FMeshDataJob newJob = FMeshDataJob(Configuration.NoiseGenerator, newChunk, Configuration.Amplitude, maxLOD, chunkSize, offset, Configuration.HeightCurve);
-			WorkerThreads[i % numThreads]->PendingJobs.Enqueue(newJob);
+			/* Spawn a new chunk if necessary. */
+			if(Chunks[i] == nullptr)
+			{
+				const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
+				UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
+				newChunk->InitChunk(10000.0f, this, &Configuration.LODs, nullptr, 0.0f);
+				Chunks[i] = newChunk;
+			}
 
-			Chunks[i] = newChunk;
+			const FVector2D positionOffset = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));	
+			Chunks[i]->SetRelativeLocation(FVector(positionOffset, 0.0f));
+
+			/* Create a new mesh data jump for the new chunk and assign it to a worker thread. */
+			const FVector2D offset = FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY + (y * chunkSize));
+			FMeshDataJob newJob = FMeshDataJob(Configuration.NoiseGenerator, Chunks[i], Configuration.Amplitude, maxLOD, chunkSize, offset, Configuration.HeightCurve);
+
+			#if NO_THREADS
+				FTerrainGeneratorWorker::DoWork(newJob);
+			#else
+				FTerrainGeneratorWorker* worker = WorkerThreads[i % numThreads];
+				worker->PendingJobs.Enqueue(newJob);
+				worker->UnPause();
+			#endif
+
+			i++;
 		}
 	}
 
-	SetActorScale3D(FVector(MapScale));
+	SetActorScale3D(Configuration.MapScale);
 }
 
 /////////////////////////////////////////////////////
@@ -86,10 +99,10 @@ void ATerrainGenerator::DrawMap(FArray2D& noiseMap, TArray<FLinearColor> colorMa
 	switch (DrawMode)
 	{
 	case EDrawMode::NoiseMap:
-		DrawTexture(TextureFromHeightMap(noiseMap), MapScale);
+		DrawTexture(TextureFromHeightMap(noiseMap), Configuration.MapScale.X);
 		break;
 	case EDrawMode::ColorMap:
-		DrawTexture(TextureFromColorMap(colorMap), MapScale);
+		DrawTexture(TextureFromColorMap(colorMap), Configuration.MapScale.X);
 		break;
 	case EDrawMode::Mesh:
 	{
