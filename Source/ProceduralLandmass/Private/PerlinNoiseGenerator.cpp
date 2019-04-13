@@ -54,5 +54,6 @@ float UPerlinNoiseGenerator::GetNoise2D_Implementation(float x, float y)
 	}
 
 	// Normalize the noise value to [0,1]
-	return UKismetMathLibrary::NormalizeToRange(noiseHeight, -Limit, Limit);
+	const float normalizedValues = UKismetMathLibrary::NormalizeToRange(noiseHeight, -Limit, Limit);
+	return normalizedValues;
 }

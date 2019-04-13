@@ -7,6 +7,7 @@
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
+//////////////////////////////////////////////////////
 FTerrainGeneratorWorker::FTerrainGeneratorWorker()
 {
 	Semaphore = FGenericPlatformProcess::GetSynchEventFromPool(false);
@@ -24,6 +25,7 @@ FTerrainGeneratorWorker::~FTerrainGeneratorWorker()
 	Thread = nullptr;
 }
 
+//////////////////////////////////////////////////////
 uint32 FTerrainGeneratorWorker::Run()
 {
 	while(!bWorkFinished)
@@ -32,12 +34,6 @@ uint32 FTerrainGeneratorWorker::Run()
 		{
 			/* This thread will 'sleep' at this line until it is woken. */
 			Semaphore->Wait();
-
-			if (bWorkFinished) // Check if we should still run when woken up.
-			{
-				return 0;
-			}
-
 			continue;
 		}
 
@@ -45,12 +41,11 @@ uint32 FTerrainGeneratorWorker::Run()
 		const bool bHasJob = PendingJobs.Dequeue(currentJob);
 		if (!bHasJob)
 		{
-			/* No jobs left, we wait a little and then destroy us if we still don't have any job. */
+			/* No jobs left, we wait a little and then go into sleep if there are still no jobs. */
 			Semaphore->Wait(1000);
 			if (PendingJobs.IsEmpty())
 			{
-				bWorkFinished = true;
-				return 0;
+				Semaphore->Wait();
 			}
 
 			continue;
@@ -62,6 +57,7 @@ uint32 FTerrainGeneratorWorker::Run()
 	return 0;
 }
 
+//////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 {
 	const int32 size = currentJob.ChunkSize;
@@ -77,16 +73,17 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	
 	currentJob.GeneratedHeightMap = heightMap;
 	currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.LevelOfDetail, currentJob.HeightCurve);
-
 	currentJob.MyGenerator->FinishedMeshDataJobs.Enqueue(currentJob);
 }
 
+//////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::UnPause()
 {
 	bPause = false;
 	Semaphore->Trigger();
 }
 
+//////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::ClearJobQueue()
 {
 	FMeshDataJob job;

@@ -9,6 +9,7 @@
 class ATerrainGenerator;
 class AActor;
 struct FMeshData;
+class UBoxComponent;
 
 
 UENUM(BlueprintType)
@@ -29,17 +30,6 @@ class UTerrainChunk : public UProceduralMeshComponent
 	GENERATED_BODY()
 
 protected:
-	/* This chunk's world position, measured from it's center point. */
-	UPROPERTY(BlueprintReadWrite)
-	FVector Location = FVector::ZeroVector;
-
-	UPROPERTY(BlueprintReadWrite)
-	AActor* Viewer;
-
-	/* The mesh component that we hold data for. */
-	UPROPERTY(BlueprintReadWrite)
-	UProceduralMeshComponent* MeshComponent = nullptr;
-
 	UPROPERTY(BlueprintReadWrite)
 	float MaxViewDistance = 0.0f;
 
@@ -51,27 +41,25 @@ protected:
 	UPROPERTY(BlueprintReadWrite)
 	ATerrainGenerator* TerrainGenerator;
 
+public:
+	TArray<FMeshData*> LODMeshes;
+	FArray2D* HeightMap;
+
 private:
 	TArray<FLODInfo>* DetailLevels;
-	TArray<FMeshData*> LODMeshes;
 
 	int32 PreviousLOD = -1;
 	int32 CurrentLOD = 0;
 
+	UBoxComponent* CollisionBox;
 
 	/////////////////////////////////////////////////////
 public:
-	UTerrainChunk() {};
+	UTerrainChunk();
 
-	void InitChunk(float viewDistance, ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, AActor* viewer, float zPosition = 0.0f);
+	void InitChunk(float viewDistance, ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray);
 
-	/* Updates this chunk's visibility based on the viewer position. If the distance to the given position is
-	 * smaller than the MaxViewDistance, than this chunk will be set to visible.
-	 * @return The new visibility. */
-	bool UpdateTerrainChunk();
-
-	bool IsChunkVisible() const { return MeshComponent && MeshComponent->IsMeshSectionVisible(CurrentLOD); };
-	void SetIsVisible(bool bVisible);
-
-	void DeleteMesh();
+protected:
+	UFUNCTION()
+	void HandleCameraOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 };

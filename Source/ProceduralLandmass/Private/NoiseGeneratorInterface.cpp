@@ -6,7 +6,11 @@
 
 float INoiseGeneratorInterface::GetNoise1D_Implementation(float x)
 {
+#if 0
 	return FMath::PerlinNoise1D(x);
+#else
+	return UUnityLibrary::PerlinNoise(x, x);
+#endif
 }
 
 float INoiseGeneratorInterface::GetNoise2D_Implementation(float x, float y)

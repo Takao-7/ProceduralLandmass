@@ -35,6 +35,7 @@ public:
 	 * Creates a mesh data struct with the given data.
 	 * Safes the height map in the red vertex color channel. This version of the height map is compressed, because the vertex color is only 8 bit (Values in range 0-255).
 	 * The generated mesh data is centered, so the mesh component's central location will be at the mesh's center.
+	 * @param heightMap The height to generate the mesh from. When @see levelOfDetail is not zero, than this must be the height map at LOD 0.
 	 */
 	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const UCurveFloat* heightCurve = nullptr)
 	{
@@ -57,7 +58,7 @@ public:
 		{
 			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
 			{
-				const float height = heightMap[vertexIndex];
+				const float height = heightMap[x + y*meshSize];
 				const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
 				Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), height * heightMultiplier * curveValue);
 				UVs[vertexIndex] = FVector2D(x / (float)meshSize, y / (float)meshSize);
@@ -95,19 +96,19 @@ private:
 		Triangles[triangleIndex + 2] = c;
 
 		triangleIndex += 3;
-	};
+	}
 
 public:
 	/////////////////////////////////////////////////////
 	/* Creates a mesh section in the given procedural mesh from this mesh data. */
-	void CreateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0)
+	void CreateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0) const
 	{
 		mesh->CreateMeshSection(sectionIndex, Vertices, Triangles, Normals, UVs, VertexColors, Tangents, true);
-	};
+	}
 
 	/* Updates the given mesh section with this mesh data. */
-	void UpdateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0)
+	void UpdateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0) const
 	{
 		mesh->UpdateMeshSection(sectionIndex, Vertices, Normals, UVs, VertexColors, Tangents);
-	};
+	}
 };

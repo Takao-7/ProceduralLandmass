@@ -23,12 +23,13 @@ struct FTerrainConfiguration
 
 protected:
 	/* The number of threads we will use to generate the terrain.
-	 * Settings this to 0 will use one thread per chunk to generate. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
-	int32 NumberOfThreads = 1;
+	 * Settings this to 0 will use one thread per chunk to generate
+	 * and a value of -1 will not use any threading. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = -1))
+	int32 NumberOfThreads = 7;
 
 public:
-	/* The noise generator to generate the terrain. If left blank, we will use the default Perlin noise generator. */
+	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TScriptInterface<INoiseGeneratorInterface> NoiseGenerator;
 
@@ -37,12 +38,12 @@ public:
 	EChunkSize ChunkSize = EChunkSize::x481;
 
 	/* The scale of each chunk. MapScale * MapChunkSize * NumberOfChunks = Total map width in cm. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f, AM_Clamp = 100.0f), Category = "Map Generator|General")
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f, ClampMax = 100.0f))
 	FVector MapScale = FVector(100.0f);
 
 	/** Number of chunks per axis we will generate. So the entire generated terrain will consist of 2 times this many chunks. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
-	int32 NumChunks = 8;
+	int32 NumChunks = 3;
 
 	/** Multiplier for height map. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 1.0f))
@@ -60,15 +61,25 @@ public:
 
 	FTerrainConfiguration()
 	{
-		for (int32 i = 0; i < 6; ++i)
 		{
+			FLODInfo newLOD;
+			newLOD.LOD = 0;
+			newLOD.VisibleDistanceThreshold = 1000.0f;
+			LODs.Add(newLOD);			
+		}
+
+		for (int32 i = 1; i <= 12; ++i)
+		{
+			if((GetNumVertices()-1) % i != 0)
+			{
+				continue;
+			}
+
 			FLODInfo newLOD;
 			newLOD.LOD = i;
 			newLOD.VisibleDistanceThreshold = 1000.0f * (i+1);
 			LODs.Add(newLOD);
-		}
-
-		
+		}		
 	}
 
 	/**
@@ -77,7 +88,7 @@ public:
 	 */
 	int32 GetNumberOfThreads() const
 	{
-		return NumberOfThreads == 0 ? NumChunks * 2 : NumberOfThreads;
+		return NumberOfThreads == -1 ? NumChunks * 2 : NumberOfThreads;
 	}
 
 	int32 GetNumVertices() const

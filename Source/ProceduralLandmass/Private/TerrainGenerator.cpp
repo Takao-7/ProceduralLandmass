@@ -10,10 +10,13 @@
 #include "Public/UnityLibrary.h"
 #include "PerlinNoiseGenerator.h"
 #include "TerrainGeneratorWorker.h"
+#include "TimerManager.h"
+#include "GameFramework/PlayerController.h"
 #include "Public/TerrainChunk.h"
-
-/* Do we want to use threading for generating mesh data? */
-#define NO_THREADS 1
+#include "Kismet/GameplayStatics.h"
+#include "Editor.h"
+#include "Editor/EditorEngine.h"
+#include "LevelEditorViewport.h"
 
 
 ATerrainGenerator::ATerrainGenerator()
@@ -22,16 +25,31 @@ ATerrainGenerator::ATerrainGenerator()
 	bRunConstructionScriptOnDrag = false;
 
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	NumUnfinishedMeshDataJobs.Set(0);
+}
+
+/////////////////////////////////////////////////////
+void ATerrainGenerator::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+}
+
+void ATerrainGenerator::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+	GetWorld()->GetTimerManager().ClearTimer(TimerHandleFinishedJobsQueue);
 }
 
 /////////////////////////////////////////////////////
 void ATerrainGenerator::GenerateMap()
 {
+	NumUnfinishedMeshDataJobs.Set(0);
+	GetWorld()->GetTimerManager().SetTimer(TimerHandleFinishedJobsQueue, this, &ATerrainGenerator::DequeAndHandleMeshDataJob, 1/60.0f, true);
+	
 	const int32 numThreads = Configuration.GetNumberOfThreads();
 	const int32 chunksPerDirection = Configuration.NumChunks;	
-	const int32 chunkSize = Configuration.GetNumVertices();
-	const int32 maxLOD = Configuration.LODs.Last().LOD;
-
+	const int32 chunkSize = Configuration.GetNumVertices() - 1;
+	
 	/* Create worker threads. */
 	WorkerThreads.Empty();
 	WorkerThreads.SetNum(numThreads);
@@ -40,57 +58,116 @@ void ATerrainGenerator::GenerateMap()
 		WorkerThreads[i] = new FTerrainGeneratorWorker();
 	}	
 
-	const int32 totalNumberOfChunks = FMath::Pow(chunksPerDirection, 2);
-	if (Chunks.Num() != totalNumberOfChunks)
+	/* Clear all chunks. */
+	for (auto& chunk : Chunks)
 	{
-		Chunks.SetNum(totalNumberOfChunks);
+		if(chunk.Value)
+		{
+			chunk.Value->DestroyComponent();			
+		}
 	}
-
+	Chunks.Empty(chunksPerDirection*chunksPerDirection);
+	
 	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
 	 * measured from their centers. */
-	const float topLeftChunkPositionX = (chunksPerDirection - 1) * chunkSize / -2.0f;
-	const float topLeftChunkPositionY = (chunksPerDirection - 1) * chunkSize / 2.0f;
+	const float topLeftChunkPositionX = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
+	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / 2.0f;
 
 	/* The top positions. Used for noise generation. */
 	const int32 totalHeight = chunkSize * chunksPerDirection;
-	const float topLeftPositionX = totalHeight / -2.0f;
-	const float topLeftPositionY = totalHeight / 2.0f;
+	const float topLeftPositionX = (totalHeight) / -2.0f;
+	const float topLeftPositionY = (totalHeight) / 2.0f;
 
 	/* Create mesh data jobs and add them to the worker threads. */
+	const int32 levelOfDetail = Configuration.LODs.Last().LOD;
+	UObject* noiseGenerator = Configuration.NoiseGenerator.GetObject();
 	int32 i = 0;
 	for (int32 y = 0; y < chunksPerDirection; ++y)
 	{
 		for (int32 x = 0; x < chunksPerDirection; ++x)
 		{
-			/* Spawn a new chunk if necessary. */
-			if(Chunks[i] == nullptr)
-			{
-				const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
-				UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
-				newChunk->InitChunk(10000.0f, this, &Configuration.LODs, nullptr, 0.0f);
-				Chunks[i] = newChunk;
-			}
-
-			const FVector2D positionOffset = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));	
-			Chunks[i]->SetRelativeLocation(FVector(positionOffset, 0.0f));
+			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
+			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
+			newChunk->InitChunk(10000.0f, this, &Configuration.LODs);
+			
+			const FVector2D chunkPosition = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));	
+			newChunk->SetRelativeLocation(FVector(chunkPosition, 0.0f));
+			Chunks.Add(FVector2D(chunkPosition), newChunk);
 
 			/* Create a new mesh data jump for the new chunk and assign it to a worker thread. */
 			const FVector2D offset = FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY + (y * chunkSize));
-			FMeshDataJob newJob = FMeshDataJob(Configuration.NoiseGenerator, Chunks[i], Configuration.Amplitude, maxLOD, chunkSize, offset, Configuration.HeightCurve);
+			FMeshDataJob newJob = FMeshDataJob(noiseGenerator, newChunk, Configuration.Amplitude, levelOfDetail, chunkSize+1, offset, Configuration.HeightCurve);
+			NumUnfinishedMeshDataJobs.Increment();
 
-			#if NO_THREADS
-				FTerrainGeneratorWorker::DoWork(newJob);
-			#else
+			if(numThreads == 0)
+			{
+				FTerrainGeneratorWorker::DoWork(newJob);				
+			}
+			else
+			{
+				/* When in multi-threading mode, we have to create one noise generator object per thread,
+				 * because they are not thread-safe. */
+				UObject* newGenerator = DuplicateObject(noiseGenerator, nullptr);
+				newJob.NoiseGenerator = newGenerator;
+				
 				FTerrainGeneratorWorker* worker = WorkerThreads[i % numThreads];
 				worker->PendingJobs.Enqueue(newJob);
-				worker->UnPause();
-			#endif
+				worker->UnPause();				
+			}
 
 			i++;
 		}
 	}
 
 	SetActorScale3D(Configuration.MapScale);
+}
+
+/////////////////////////////////////////////////////
+void ATerrainGenerator::DequeAndHandleMeshDataJob()
+{
+	FMeshDataJob job;
+	if(FinishedMeshDataJobs.Dequeue(job))
+	{
+		FMeshData* meshData = job.GeneratedMeshData;
+		UTerrainChunk* chunk = job.Chunk;
+
+		chunk->bUseAsyncCooking = true;
+		const bool bCreateCollision = meshData->LOD == 0; // Only create collision for LOD 0 mesh.
+		chunk->CreateMeshSection(0, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, bCreateCollision);
+		chunk->LODMeshes[meshData->LOD] = meshData;
+		chunk->HeightMap = job.GeneratedHeightMap;
+	
+		const bool bJobsFinished = NumUnfinishedMeshDataJobs.Decrement() == 0;
+		if(bJobsFinished && EditorPreviewLevelOfDetail != -1)
+		{
+			FVector cameraLocation;
+			
+			APlayerCameraManager* cameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0);
+			if(cameraManager)
+			{
+				cameraLocation = cameraManager->GetCameraLocation();
+			}
+			else
+			{
+				FLevelEditorViewportClient* client = static_cast<FLevelEditorViewportClient*>(GEditor->GetActiveViewport()->GetClient());
+				if (client)
+				{
+					cameraLocation = client->GetViewLocation();
+				}
+				else
+				{
+					UKismetSystemLibrary::PrintString(this, TEXT("No viewport client"));
+				}
+			}
+			cameraLocation = GetTransform().TransformPosition(cameraLocation); /* Transform the camera location into local space. */
+
+			/* Calculate the camera position relative to the chunk grid. */
+			const FVector chunkSize = (Configuration.GetNumVertices() - 1) * Configuration.MapScale;
+			cameraLocation.X = FMath::RoundToInt(cameraLocation.X / chunkSize.X);
+			cameraLocation.Y = FMath::RoundToInt(cameraLocation.Y / chunkSize.Y);
+			
+		}		
+	}
 }
 
 /////////////////////////////////////////////////////
@@ -175,52 +252,3 @@ UTexture2D* ATerrainGenerator::TextureFromHeightMap(const FArray2D& heightMap)
 	return TextureFromColorMap(colorMap);
 }
 
-void ATerrainGenerator::Tick(float DeltaSeconds)
-{
-	Super::Tick(DeltaSeconds);
-
-	FMeshDataJob job;
-	if(FinishedMeshDataJobs.Dequeue(job))
-	{
-		FMeshData* meshData = job.GeneratedMeshData;
-		job.Chunk->bUseAsyncCooking = true;
-		job.Chunk->CreateMeshSection(0, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, true);
-
-		//delete job.GeneratedMeshData;
-		//delete job.GeneratedHeightMap;
-	}
-}
-
-/////////////////////////////////////////////////////
-//void ATerrainGenerator::RequestMapData(FVector2D center, TFunction<void (FMapData)> callback)
-//{
-//	UUnityLibrary::CreateTask([=]() { MapDataThread(center, callback); })->StartBackgroundTask();
-//}
-//
-//void ATerrainGenerator::MapDataThread(FVector2D center, TFunction<void (FMapData)> callback)
-//{
-//	FMapData mapData = GenerateMapData(center);
-//	FMapThreadInfo<FMapData> threadInfo = FMapThreadInfo<FMapData>(callback, mapData);
-//
-//	{
-//		FScopeLock ScopeLockMapData(&CriticalSectionMapDataQueue);
-//		MapDataThreadInfoQueue.Enqueue(threadInfo);
-//	}
-//}
-
-/////////////////////////////////////////////////////
-//void ATerrainGenerator::RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
-//{
-//	UUnityLibrary::CreateTask([=]() { MeshDataThread(mapData, lod, callback); })->StartBackgroundTask();
-//}
-
-//void ATerrainGenerator::MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
-//{
-//	FMeshData meshData = FMeshData(mapData.HeightMap, MeshHeightMultiplier, lod, MeshHeightCurve);
-//	FMapThreadInfo<FMeshData> threadInfo = FMapThreadInfo<FMeshData>(callback, meshData);
-//
-//	{
-//		FScopeLock ScopeLockMeshData(&CriticalSectionMeshDataQueue);
-//		MeshDataThreadInfoQueue.Enqueue(threadInfo);
-//	}
-//}

@@ -15,7 +15,7 @@ UEndlessTerrain::UEndlessTerrain()
 
 void UEndlessTerrain::UpdateVisibleChunks()
 {
-	for (UTerrainChunk* chunk : TerrainChunksVisible)
+	/*for (UTerrainChunk* chunk : TerrainChunksVisible)
 	{
 		const bool bIsVisibleNow = chunk->UpdateTerrainChunk();
 		if (!bIsVisibleNow)
@@ -50,7 +50,7 @@ void UEndlessTerrain::UpdateVisibleChunks()
 				TerrainChunkDictionary.Add(viewedChunkCoord, newChunk);
 			}
 		}
-	}
+	}*/
 }
 
 void UEndlessTerrain::BeginPlay()

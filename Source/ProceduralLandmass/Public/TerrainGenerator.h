@@ -88,6 +88,7 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = -1, ClampMax = 6), Category = "Map Generator|General")
 	int32 EditorPreviewLevelOfDetail = -1;
 
+public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
 	FTerrainConfiguration Configuration;
 
@@ -101,12 +102,19 @@ protected:
 	UCurveFloat* MeshHeightCurve;
 
 private:
+	/* Array of all worker threads. */
 	TArray<FTerrainGeneratorWorker*> WorkerThreads;
-	TArray<UTerrainChunk*> Chunks;
+
+	TMap<FVector2D, UTerrainChunk*> Chunks;
+	
+	FTimerHandle TimerHandleFinishedJobsQueue;
 
 public:
 	/* Queue for finished jobs */
 	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
+
+	/* The number of unfinished mesh data jobs. */
+	FThreadSafeCounter NumUnfinishedMeshDataJobs;
 
 
 	/////////////////////////////////////////////////////
@@ -130,9 +138,13 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void DrawMap(FArray2D &noiseMap, TArray<FLinearColor> colorMap);
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 public:	
 	// Sets default values for this actor's properties
 	ATerrainGenerator();
+	
+	virtual void Tick(float DeltaSeconds) override;
 
 	/* Returns the terrain size (in cm) along one direction. So the total terrain area is 2x this value. */
 	float GetTerrainSize() const
@@ -147,11 +159,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	static UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
 	
-	void Tick(float DeltaSeconds) override;
+	void DequeAndHandleMeshDataJob();
 
-	/*void RequestMapData(FVector2D center, TFunction<void (FMapData)> callback);
-	void MapDataThread(FVector2D center, TFunction<void (FMapData)> callback);*/
-
-	/*void RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
-	void MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);*/
 };
