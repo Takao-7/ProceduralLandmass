@@ -79,6 +79,34 @@ public:
 	}
 	~FMeshData() {}
 
+
+	void UpdateMeshData(const FArray2D& heightMap, float heightMultiplier, const UCurveFloat* heightCurve = nullptr)
+	{
+		const int32 meshSize = heightMap.GetWidth();
+		const float topLeftX = (meshSize - 1) / -2.0f;
+		const float topLeftY = (meshSize - 1) / 2.0f;
+
+		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
+
+		int32 vertexIndex = 0;
+		for (int32 y = 0; y < meshSize; y += meshSimplificationIncrement)
+		{
+			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
+			{
+				const float height = heightMap[x + y * meshSize];
+				const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
+				Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), height * heightMultiplier * curveValue);
+				UVs[vertexIndex] = FVector2D(x / (float)meshSize, y / (float)meshSize);
+
+				/* Safe the height map to the red vertex color channel. */
+				const FColor color = FColor((uint8)FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height));
+				VertexColors[vertexIndex] = color;
+
+				vertexIndex++;
+			}
+		}
+	}
+
 private:
 	/////////////////////////////////////////////////////
 	int32 triangleIndex = 0;
@@ -96,19 +124,5 @@ private:
 		Triangles[triangleIndex + 2] = c;
 
 		triangleIndex += 3;
-	}
-
-public:
-	/////////////////////////////////////////////////////
-	/* Creates a mesh section in the given procedural mesh from this mesh data. */
-	void CreateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0) const
-	{
-		mesh->CreateMeshSection(sectionIndex, Vertices, Triangles, Normals, UVs, VertexColors, Tangents, true);
-	}
-
-	/* Updates the given mesh section with this mesh data. */
-	void UpdateMesh(UProceduralMeshComponent* mesh, int32 sectionIndex = 0) const
-	{
-		mesh->UpdateMeshSection(sectionIndex, Vertices, Normals, UVs, VertexColors, Tangents);
 	}
 };

@@ -24,18 +24,23 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	static TArray<FVector2D> g2;
 	static TArray<FVector> g3;
 	
-	const auto sCurve = [](float t)
+	const auto sCurve = [](float t) -> float
 	{
 		return t * t * (3.0f - 2.0f * t);
 	};
 
-	const auto setup = [&](int32 i, int32& b0, int32& b1, float& r0, float& r1, float& t)
+	const auto setup = [&](int32 i, int32& b0, int32& b1, float& r0, float& r1, float& t) -> void
 	{
 		t = vec[i] + N;
 		b0 = ((int32)t) & BM;
 		b1 = (b0 + 1) & BM;
 		r0 = t - (int32)t;
 		r1 = r0 - 1.;
+	};
+
+	const auto at2 = [](float rx, float ry, const FVector2D& q) -> float
+	{
+		return rx * q[0] + ry * q[1];
 	};
 
 	static bool bIsFirstCall = true;
@@ -93,7 +98,7 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	int32 bx0, bx1, by0, by1, b00, b10, b01, b11;
 	float rx0, rx1, ry0, ry1, sx, sy, a, b, t, u, v;
 	FVector2D q;
-	register int32 i, j;
+	int32 i, j;
 
 	setup(0, bx0, bx1, rx0, rx1, t);
 	setup(1, by0, by1, ry0, ry1, t);
@@ -109,14 +114,12 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	sx = sCurve(rx0);
 	sy = sCurve(ry0);
 
-#define at2(rx,ry) ( rx * q[0] + ry * q[1] )
-
-	q = g2[b00]; u = at2(rx0, ry0);
-	q = g2[b10]; v = at2(rx1, ry0);
+	q = g2[b00]; u = at2(rx0, ry0, q);
+	q = g2[b10]; v = at2(rx1, ry0, q);
 	a = FMath::Lerp(u, v, sx);
 
-	q = g2[b01]; u = at2(rx0, ry1);
-	q = g2[b11]; v = at2(rx1, ry1);
+	q = g2[b01]; u = at2(rx0, ry1, q);
+	q = g2[b11]; v = at2(rx1, ry1, q);
 	b = FMath::Lerp(u, v, sx);
 
 	return FMath::Lerp(a, b, sy);

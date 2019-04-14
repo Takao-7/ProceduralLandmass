@@ -60,19 +60,34 @@ uint32 FTerrainGeneratorWorker::Run()
 //////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 {
-	const int32 size = currentJob.ChunkSize;
+	const int32 size = currentJob.NumVertices;
 	const int32 offsetX = currentJob.Offset.X;
 	const int32 offsetY = currentJob.Offset.Y;
+	const bool bUpdateSection = currentJob.bUpdateMeshSection;
+
+	UTerrainChunk* chunk = currentJob.Chunk;
+	FArray2D* heightMap = bUpdateSection ? chunk->HeightMap : new FArray2D(size, size);
 	UObject* noiseGenerator = currentJob.NoiseGenerator.GetObject();
-	
-	FArray2D* heightMap = new FArray2D(size, size);
-	heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
+	if (noiseGenerator)
 	{
-		value = INoiseGeneratorInterface::Execute_GetNoise2D(noiseGenerator, xIndex + offsetX, yIndex + offsetY);
-	});
+		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
+		{
+			value = INoiseGeneratorInterface::Execute_GetNoise2D(noiseGenerator, xIndex + offsetX, yIndex + offsetY);
+		});
+	}	
 	
 	currentJob.GeneratedHeightMap = heightMap;
-	currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.LevelOfDetail, currentJob.HeightCurve);
+	if (bUpdateSection)
+	{
+		currentJob.GeneratedMeshData = chunk->LODMeshes[currentJob.LevelOfDetail];
+		currentJob.GeneratedMeshData->UpdateMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.HeightCurve);
+	}
+	else
+	{
+		currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.LevelOfDetail, currentJob.HeightCurve);
+		chunk->Status = EChunkStatus::MESH_DATA_REQUESTED;
+	}
+
 	currentJob.MyGenerator->FinishedMeshDataJobs.Enqueue(currentJob);
 }
 

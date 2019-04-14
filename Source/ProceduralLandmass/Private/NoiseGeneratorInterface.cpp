@@ -6,7 +6,7 @@
 
 float INoiseGeneratorInterface::GetNoise1D_Implementation(float x)
 {
-#if 0
+#if (ENGINE_MINOR_VERSION > 20)
 	return FMath::PerlinNoise1D(x);
 #else
 	return UUnityLibrary::PerlinNoise(x, x);

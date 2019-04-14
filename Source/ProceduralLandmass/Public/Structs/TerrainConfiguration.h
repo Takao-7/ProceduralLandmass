@@ -9,10 +9,11 @@ class INoiseGeneratorInterface;
 
 /* The number of vertices each chunk has per direction. */
 UENUM(BlueprintType)
-enum class EChunkSize : uint8
+enum class ENumVertices : uint8
 {
-	x241,
-	x481
+	x61 = 61,
+	x121 = 121,
+	x241 = 241
 };
 
 
@@ -21,21 +22,21 @@ struct FTerrainConfiguration
 {
 	GENERATED_BODY()
 
-protected:
+
+public:
 	/* The number of threads we will use to generate the terrain.
 	 * Settings this to 0 will use one thread per chunk to generate
 	 * and a value of -1 will not use any threading. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = -1))
 	int32 NumberOfThreads = 7;
 
-public:
 	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TScriptInterface<INoiseGeneratorInterface> NoiseGenerator;
 
 	/* Number of vertices per direction per chunk. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	EChunkSize ChunkSize = EChunkSize::x481;
+	ENumVertices NumVertices = ENumVertices::x61;
 
 	/* The scale of each chunk. MapScale * MapChunkSize * NumberOfChunks = Total map width in cm. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f, ClampMax = 100.0f))
@@ -70,7 +71,7 @@ public:
 
 		for (int32 i = 1; i <= 12; ++i)
 		{
-			if((GetNumVertices()-1) % i != 0)
+			if(GetChunkSize() % i != 0)
 			{
 				continue;
 			}
@@ -93,14 +94,11 @@ public:
 
 	int32 GetNumVertices() const
 	{
-		switch (ChunkSize)
-		{
-		case EChunkSize::x241:
-			return 241;
-		case EChunkSize::x481:
-			return 481;
-		default:
-			return 241;
-		}
+		return (int32)NumVertices;
+	}
+
+	int32 GetChunkSize() const
+	{
+		return GetNumVertices() - 1;
 	}
 };

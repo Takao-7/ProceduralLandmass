@@ -33,15 +33,15 @@ protected:
 	UPROPERTY(BlueprintReadWrite)
 	float MaxViewDistance = 0.0f;
 
-	/* Our status */
-	UPROPERTY(BlueprintReadWrite)
-	EChunkStatus Status = EChunkStatus::SPAWNED;
-
 	/* Our terrain generator */
 	UPROPERTY(BlueprintReadWrite)
 	ATerrainGenerator* TerrainGenerator;
 
 public:
+	/* Our status */
+	UPROPERTY(BlueprintReadWrite)
+	EChunkStatus Status = EChunkStatus::SPAWNED;
+
 	TArray<FMeshData*> LODMeshes;
 	FArray2D* HeightMap;
 
@@ -51,13 +51,11 @@ private:
 	int32 PreviousLOD = -1;
 	int32 CurrentLOD = 0;
 
-	UBoxComponent* CollisionBox;
-
 	/////////////////////////////////////////////////////
 public:
 	UTerrainChunk();
 
-	void InitChunk(float viewDistance, ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray);
+	void InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray);
 
 protected:
 	UFUNCTION()

@@ -2,6 +2,7 @@
 #include "TerrainGenerator.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Components/BoxComponent.h"
+#include "LODInfo.h"
 
 
 UTerrainChunk::UTerrainChunk()
@@ -9,9 +10,8 @@ UTerrainChunk::UTerrainChunk()
 	
 }
 
-void UTerrainChunk::InitChunk(float viewDistance, ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray)
+void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray)
 {
-	this->MaxViewDistance = viewDistance;
 	this->DetailLevels = lodInfoArray;
 	this->TerrainGenerator = parentTerrainGenerator;
 
@@ -19,7 +19,7 @@ void UTerrainChunk::InitChunk(float viewDistance, ATerrainGenerator* parentTerra
 	LODMeshes.SetNum(maxLOD + 1);
 	AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::SnapToTargetIncludingScale);
 
-	CollisionBox = NewObject<UBoxComponent>(this, TEXT("Collisionbox"));
+	/*CollisionBox = NewObject<UBoxComponent>(this, TEXT("Collision box"));
 	CollisionBox->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetIncludingScale);
 	CollisionBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	CollisionBox->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
@@ -27,7 +27,7 @@ void UTerrainChunk::InitChunk(float viewDistance, ATerrainGenerator* parentTerra
 	CollisionBox->OnComponentBeginOverlap.AddDynamic(this, &UTerrainChunk::HandleCameraOverlap);
 	
 	const FVector boxSize = FVector(parentTerrainGenerator->Configuration.GetNumVertices()-1);
-	CollisionBox->SetBoxExtent(boxSize);
+	CollisionBox->SetBoxExtent(boxSize);*/
 }
 
 void UTerrainChunk::HandleCameraOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,

@@ -14,9 +14,9 @@
 #include "GameFramework/PlayerController.h"
 #include "Public/TerrainChunk.h"
 #include "Kismet/GameplayStatics.h"
-#include "Editor.h"
-#include "Editor/EditorEngine.h"
-#include "LevelEditorViewport.h"
+#include <Engine/GameInstance.h>
+#include <Engine/LocalPlayer.h>
+#include <GameFramework/Actor.h>
 
 
 ATerrainGenerator::ATerrainGenerator()
@@ -34,10 +34,18 @@ void ATerrainGenerator::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 }
 
+void ATerrainGenerator::BeginPlay()
+{
+	Super::BeginPlay();
+	GetWorld()->GetTimerManager().ClearTimer(TimerHandleFinishedJobsQueue);
+	WorkerThreads.Empty(0);
+}
+
 void ATerrainGenerator::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	Super::EndPlay(EndPlayReason);
 	GetWorld()->GetTimerManager().ClearTimer(TimerHandleFinishedJobsQueue);
+	WorkerThreads.Empty(0);
 }
 
 /////////////////////////////////////////////////////
@@ -48,7 +56,7 @@ void ATerrainGenerator::GenerateMap()
 	
 	const int32 numThreads = Configuration.GetNumberOfThreads();
 	const int32 chunksPerDirection = Configuration.NumChunks;	
-	const int32 chunkSize = Configuration.GetNumVertices() - 1;
+	const int32 chunkSize = Configuration.GetChunkSize();
 	
 	/* Create worker threads. */
 	WorkerThreads.Empty();
@@ -73,14 +81,8 @@ void ATerrainGenerator::GenerateMap()
 	const float topLeftChunkPositionX = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
 	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / 2.0f;
 
-	/* The top positions. Used for noise generation. */
-	const int32 totalHeight = chunkSize * chunksPerDirection;
-	const float topLeftPositionX = (totalHeight) / -2.0f;
-	const float topLeftPositionY = (totalHeight) / 2.0f;
-
 	/* Create mesh data jobs and add them to the worker threads. */
-	const int32 levelOfDetail = Configuration.LODs.Last().LOD;
-	UObject* noiseGenerator = Configuration.NoiseGenerator.GetObject();
+	const int32 levelOfDetail = 0;
 	int32 i = 0;
 	for (int32 y = 0; y < chunksPerDirection; ++y)
 	{
@@ -88,38 +90,55 @@ void ATerrainGenerator::GenerateMap()
 		{
 			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
 			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
-			newChunk->InitChunk(10000.0f, this, &Configuration.LODs);
+			newChunk->InitChunk(this, &Configuration.LODs);
+			newChunk->bEnableAutoLODGeneration = true;
+			newChunk->bUseAsyncCooking = true;
+			newChunk->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			newChunk->SetCollisionResponseToAllChannels(ECR_Block);
 			
-			const FVector2D chunkPosition = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));	
+			const FVector2D chunkPosition = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));
 			newChunk->SetRelativeLocation(FVector(chunkPosition, 0.0f));
 			Chunks.Add(FVector2D(chunkPosition), newChunk);
 
 			/* Create a new mesh data jump for the new chunk and assign it to a worker thread. */
-			const FVector2D offset = FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY + (y * chunkSize));
-			FMeshDataJob newJob = FMeshDataJob(noiseGenerator, newChunk, Configuration.Amplitude, levelOfDetail, chunkSize+1, offset, Configuration.HeightCurve);
-			NumUnfinishedMeshDataJobs.Increment();
-
-			if(numThreads == 0)
-			{
-				FTerrainGeneratorWorker::DoWork(newJob);				
-			}
-			else
-			{
-				/* When in multi-threading mode, we have to create one noise generator object per thread,
-				 * because they are not thread-safe. */
-				UObject* newGenerator = DuplicateObject(noiseGenerator, nullptr);
-				newJob.NoiseGenerator = newGenerator;
-				
-				FTerrainGeneratorWorker* worker = WorkerThreads[i % numThreads];
-				worker->PendingJobs.Enqueue(newJob);
-				worker->UnPause();				
-			}
-
-			i++;
+			CreateAndEnqueueMeshDataJob(newChunk, levelOfDetail, chunkSize + 1);
+			++i;
 		}
 	}
 
 	SetActorScale3D(Configuration.MapScale);
+}
+
+void ATerrainGenerator::UpdateMap()
+{
+
+}
+
+void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, int32 numVertices, bool bUpdateMeshSection /*= false*/, UObject* noiseGenerator /*= nullptr*/, const FVector2D& offset /*= FVector2D::ZeroVector*/)
+{
+	FMeshDataJob newJob = FMeshDataJob(noiseGenerator, chunk, Configuration.Amplitude, levelOfDetail, numVertices, bUpdateMeshSection, offset, Configuration.HeightCurve);
+	NumUnfinishedMeshDataJobs.Increment();
+	
+	const int32 numThreads = Configuration.GetNumberOfThreads();
+	if (numThreads == 0)
+	{
+		FTerrainGeneratorWorker::DoWork(newJob);
+	}
+	else
+	{
+		if(noiseGenerator)
+		{
+			/* When in multi-threading mode, we have to create one noise generator object per thread,
+			* because they are not thread-safe. */
+			UObject* newGenerator = DuplicateObject(noiseGenerator, nullptr);
+			newJob.NoiseGenerator = newGenerator;
+		}
+
+		static int32 i = 0;
+		FTerrainGeneratorWorker* worker = WorkerThreads[i++ % numThreads];
+		worker->PendingJobs.Enqueue(newJob);
+		worker->UnPause();
+	}
 }
 
 /////////////////////////////////////////////////////
@@ -128,46 +147,82 @@ void ATerrainGenerator::DequeAndHandleMeshDataJob()
 	FMeshDataJob job;
 	if(FinishedMeshDataJobs.Dequeue(job))
 	{
-		FMeshData* meshData = job.GeneratedMeshData;
-		UTerrainChunk* chunk = job.Chunk;
-
-		chunk->bUseAsyncCooking = true;
-		const bool bCreateCollision = meshData->LOD == 0; // Only create collision for LOD 0 mesh.
-		chunk->CreateMeshSection(0, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, bCreateCollision);
-		chunk->LODMeshes[meshData->LOD] = meshData;
-		chunk->HeightMap = job.GeneratedHeightMap;
-	
-		const bool bJobsFinished = NumUnfinishedMeshDataJobs.Decrement() == 0;
-		if(bJobsFinished && EditorPreviewLevelOfDetail != -1)
 		{
-			FVector cameraLocation;
-			
-			APlayerCameraManager* cameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0);
-			if(cameraManager)
+			FMeshData* meshData = job.GeneratedMeshData;
+			UTerrainChunk* chunk = job.Chunk;
+
+			if (job.bUpdateMeshSection)
 			{
-				cameraLocation = cameraManager->GetCameraLocation();
+				chunk->UpdateMeshSection(0, meshData->Vertices, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents);
 			}
 			else
 			{
-				FLevelEditorViewportClient* client = static_cast<FLevelEditorViewportClient*>(GEditor->GetActiveViewport()->GetClient());
-				if (client)
+				const bool bCreateCollision = meshData->LOD == 0; // Only create collision for LOD 0 mesh.
+				chunk->CreateMeshSection(0, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, true);
+				chunk->Status = EChunkStatus::IDLE;
+			}
+			chunk->LODMeshes[meshData->LOD] = meshData;
+			chunk->HeightMap = job.GeneratedHeightMap;
+			
+			delete job.NoiseGenerator.GetObject();
+		}
+	
+		const bool bJobsFinished = NumUnfinishedMeshDataJobs.Decrement() == 0;
+		if(bJobsFinished)
+		{
+			UObject* noiseGenerator = Configuration.NoiseGenerator.GetObject();
+			if (noiseGenerator)
+			{
+				const int32 chunksPerDirection = Configuration.NumChunks;
+				const int32 chunkSize = Configuration.GetChunkSize();
+
+				/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
+				* measured from their centers. */
+				const float topLeftChunkPositionX = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
+				const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / 2.0f;
+
+				/* The top positions. Used for noise generation. */
+				const int32 totalHeight = chunkSize * chunksPerDirection;
+				const float topLeftPositionX = (totalHeight) / -2.0f;
+				const float topLeftPositionY = (totalHeight) / 2.0f;
+
+				int32 i = 0;
+				for (int32 y = 0; y < Configuration.NumChunks; ++y)
 				{
-					cameraLocation = client->GetViewLocation();
-				}
-				else
-				{
-					UKismetSystemLibrary::PrintString(this, TEXT("No viewport client"));
+					for (int32 x = 0; x < Configuration.NumChunks; ++x)
+					{
+						const FVector2D chunkPosition = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));
+						UTerrainChunk* chunk = *Chunks.Find(chunkPosition);
+						FVector2D offset = FVector2D(topLeftPositionX - x * chunkSize, topLeftPositionY - y * chunkSize );
+						CreateAndEnqueueMeshDataJob(chunk, Configuration.LODs[0].LOD, Configuration.GetNumVertices(), true, noiseGenerator, offset);
+
+						++i;
+					}
 				}
 			}
-			cameraLocation = GetTransform().TransformPosition(cameraLocation); /* Transform the camera location into local space. */
-
-			/* Calculate the camera position relative to the chunk grid. */
-			const FVector chunkSize = (Configuration.GetNumVertices() - 1) * Configuration.MapScale;
-			cameraLocation.X = FMath::RoundToInt(cameraLocation.X / chunkSize.X);
-			cameraLocation.Y = FMath::RoundToInt(cameraLocation.Y / chunkSize.Y);
-			
 		}		
+	}	
+}
+
+FVector ATerrainGenerator::GetCameraLocation()
+{
+	FVector cameraLocation = FVector::ZeroVector;
+
+	APlayerCameraManager* cameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	if (cameraManager)
+	{
+		cameraLocation = cameraManager->GetCameraLocation();
 	}
+	else
+	{
+		auto viewLocations = GetWorld()->ViewLocationsRenderedLastFrame;
+		if (viewLocations.Num() != 0)
+		{
+			cameraLocation = viewLocations[0];
+		}
+	}
+
+	return cameraLocation;
 }
 
 /////////////////////////////////////////////////////
@@ -213,11 +268,11 @@ void ATerrainGenerator::DrawTexture(UTexture2D* texture, float targetScale)
 
 void ATerrainGenerator::DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale)
 {
-	meshData.CreateMesh(mesh);
-	UMaterialInstanceDynamic* materialInstance = mesh->CreateAndSetMaterialInstanceDynamicFromMaterial(0, material);
-	materialInstance->SetTextureParameterValue("Texture", texture);
-	
-	mesh->SetRelativeScale3D(FVector(targetScale));
+	//meshData.CreateMesh(mesh);
+	//UMaterialInstanceDynamic* materialInstance = mesh->CreateAndSetMaterialInstanceDynamicFromMaterial(0, material);
+	//materialInstance->SetTextureParameterValue("Texture", texture);
+	//
+	//mesh->SetRelativeScale3D(FVector(targetScale));
 }
 
 /////////////////////////////////////////////////////

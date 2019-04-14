@@ -38,7 +38,10 @@ public:
 	int32 LevelOfDetail = 0;
 
 	/* Number of vertices per edge at LOD 0. So the mesh has this many vertices squared. */
-	int32 ChunkSize = 240;
+	int32 NumVertices = 61;
+
+	/* Do we want to update the mesh section or create a new one? */
+	bool bUpdateMeshSection = false;
 
 	/* Add this offset to the noise generator input. */
 	FVector2D Offset = FVector2D::ZeroVector;
@@ -65,8 +68,10 @@ public:
 	 * @param offset Add this offset to the noise generator input. This will shift the noise map by this value.
 	 * @param heightCurve (Optional) Height curve to multiply the vertex height with. The X-axis represents the noise generator output (0..1) and the Y axis the modifier.
 	 */
-	FMeshDataJob(TScriptInterface<INoiseGeneratorInterface> noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 chunkSize, FVector2D offset, UCurveFloat* heightCurve = nullptr)
-						: Chunk(chunk), NoiseGenerator(noiseGenerator), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), ChunkSize(chunkSize), Offset(offset), HeightCurve(heightCurve)
+	FMeshDataJob(TScriptInterface<INoiseGeneratorInterface> noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 numVertices, 
+		bool bUpdateMeshSection = false, FVector2D offset = FVector2D::ZeroVector, UCurveFloat* heightCurve = nullptr)
+	: Chunk(chunk), NoiseGenerator(noiseGenerator), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), NumVertices(numVertices), 
+		bUpdateMeshSection(bUpdateMeshSection), Offset(offset), HeightCurve(heightCurve)
 	{
 		MyGenerator = reinterpret_cast<ATerrainGenerator*>(chunk->GetOwner());
 	};

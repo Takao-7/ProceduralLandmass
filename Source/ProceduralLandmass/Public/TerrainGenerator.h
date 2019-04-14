@@ -116,6 +116,8 @@ public:
 	/* The number of unfinished mesh data jobs. */
 	FThreadSafeCounter NumUnfinishedMeshDataJobs;
 
+	FCriticalSection Semaphore;
+
 
 	/////////////////////////////////////////////////////
 					/* Functions */
@@ -133,11 +135,17 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void GenerateMap();
 
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	void UpdateMap();
+
+	void CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, int32 numVertices, bool bUpdateMeshSection = false, UObject* noiseGenerator = nullptr, const FVector2D& offset = FVector2D::ZeroVector);
+
 	static FArray2D GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance = 0.5f, bool bOptimiseNormalization = false, const FVector2D& offset = FVector2D::ZeroVector, int32 seed = 42);
 
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void DrawMap(FArray2D &noiseMap, TArray<FLinearColor> colorMap);
 
+	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:	
@@ -161,4 +169,5 @@ public:
 	
 	void DequeAndHandleMeshDataJob();
 
+	FVector GetCameraLocation();
 };
