@@ -4,21 +4,21 @@
 #include "UnityLibrary.h"
 
 
-float INoiseGeneratorInterface::GetNoise1D_Implementation(float x)
+float UNoiseGeneratorInterface::GetNoise1D(float x)
 {
-#if (ENGINE_MINOR_VERSION > 20)
+#if (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 20)
 	return FMath::PerlinNoise1D(x);
 #else
 	return UUnityLibrary::PerlinNoise(x, x);
 #endif
 }
 
-float INoiseGeneratorInterface::GetNoise2D_Implementation(float x, float y)
+float UNoiseGeneratorInterface::GetNoise2D(float x, float y)
 {
 	return UUnityLibrary::PerlinNoise(x, y);
 }
 
-float INoiseGeneratorInterface::GetNoise3D_Implementation(float x, float y, float z)
+float UNoiseGeneratorInterface::GetNoise3D(float x, float y, float z)
 {
-	return GetNoise1D(x) * GetNoise2D(x, y);
+	return GetNoise1D_K2(x) * GetNoise2D(x, y);
 }

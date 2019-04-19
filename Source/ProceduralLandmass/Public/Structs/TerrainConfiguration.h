@@ -1,10 +1,10 @@
 #pragma once
-#include "LODInfo.h"
+#include "Structs/LODInfo.h"
 #include "NoiseGeneratorInterface.h"
 #include "TerrainConfiguration.generated.h"
 
 
-class INoiseGeneratorInterface;
+class UNoiseGeneratorInterface;
 
 
 /* The number of vertices each chunk has per direction. */
@@ -32,7 +32,7 @@ public:
 
 	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TScriptInterface<INoiseGeneratorInterface> NoiseGenerator;
+	UNoiseGeneratorInterface* NoiseGenerator;
 
 	/* Number of vertices per direction per chunk. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -40,7 +40,7 @@ public:
 
 	/* The scale of each chunk. MapScale * MapChunkSize * NumberOfChunks = Total map width in cm. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f, ClampMax = 100.0f))
-	FVector MapScale = FVector(100.0f);
+	float MapScale = 100.0f;
 
 	/** Number of chunks per axis we will generate. So the entire generated terrain will consist of 2 times this many chunks. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
@@ -48,37 +48,30 @@ public:
 
 	/** Multiplier for height map. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 1.0f))
-	float Amplitude = 50.0f;
+	float Amplitude = 20.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UCurveFloat* HeightCurve = nullptr;
 
-	/** If checked and numLODs > 1, material will be instanced and TerrainOpacity parameters used to dither LOD transitions. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	bool DitheringLODTransitions = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite)
 	TArray<FLODInfo> LODs;
 
 	FTerrainConfiguration()
 	{
-		{
-			FLODInfo newLOD;
-			newLOD.LOD = 0;
-			newLOD.VisibleDistanceThreshold = 1000.0f;
-			LODs.Add(newLOD);			
-		}
+		FLODInfo newLOD;
+		newLOD.LOD = 0;
+		newLOD.VisibleDistanceThreshold = 10000.0f;
+		LODs.Add(newLOD);			
 
-		for (int32 i = 1; i <= 12; ++i)
+		for (int32 i = 1; i <= 10; ++i)
 		{
-			if(GetChunkSize() % i != 0)
+			if(GetChunkSize() % (2*i) != 0)
 			{
 				continue;
 			}
 
-			FLODInfo newLOD;
 			newLOD.LOD = i;
-			newLOD.VisibleDistanceThreshold = 1000.0f * (i+1);
+			newLOD.VisibleDistanceThreshold = 10000.0f * (i+1);
 			LODs.Add(newLOD);
 		}		
 	}

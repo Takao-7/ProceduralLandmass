@@ -30,9 +30,6 @@ class UTerrainChunk : public UProceduralMeshComponent
 	GENERATED_BODY()
 
 protected:
-	UPROPERTY(BlueprintReadWrite)
-	float MaxViewDistance = 0.0f;
-
 	/* Our terrain generator */
 	UPROPERTY(BlueprintReadWrite)
 	ATerrainGenerator* TerrainGenerator;
@@ -45,19 +42,26 @@ public:
 	TArray<FMeshData*> LODMeshes;
 	FArray2D* HeightMap;
 
+	/* The player's camera location. Used for level of detail. */
+	static FVector CameraLocation;
+
+	/* This chunks noise offset. */
+	FVector2D NoiseOffset;
+
 private:
+	int32 CurrentLOD = 0;
+
+	TArray<bool> RequestedMeshData;
+
 	TArray<FLODInfo>* DetailLevels;
 
-	int32 PreviousLOD = -1;
-	int32 CurrentLOD = 0;
+	/* This chunk's size, including it's parent terrain generator scale. */
+	int32 TotalChunkSize = 0;
 
 	/////////////////////////////////////////////////////
 public:
-	UTerrainChunk();
-
-	void InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray);
-
-protected:
-	UFUNCTION()
-	void HandleCameraOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	void SetNewLOD(int32 newLOD);
+	void InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, FVector2D noiseOffset = FVector2D::ZeroVector);
+	void UpdateChunk(FVector cameraLocation);
+	void UpdateChunk();
 };

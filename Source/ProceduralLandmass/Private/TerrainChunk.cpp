@@ -5,33 +5,64 @@
 #include "LODInfo.h"
 
 
-UTerrainChunk::UTerrainChunk()
-{
-	
-}
+FVector UTerrainChunk::CameraLocation = FVector::ZeroVector;
 
-void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray)
+void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, FVector2D noiseOffset /*= FVector2D::ZeroVector*/)
 {
 	this->DetailLevels = lodInfoArray;
 	this->TerrainGenerator = parentTerrainGenerator;
 
 	const int32 maxLOD = DetailLevels->Last().LOD;
 	LODMeshes.SetNum(maxLOD + 1);
+	RequestedMeshData.SetNum(maxLOD + 1);
 	AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::SnapToTargetIncludingScale);
 
-	/*CollisionBox = NewObject<UBoxComponent>(this, TEXT("Collision box"));
-	CollisionBox->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetIncludingScale);
-	CollisionBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	CollisionBox->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
-	CollisionBox->SetCollisionResponseToChannel(ECollisionChannel::ECC_Camera, ECollisionResponse::ECR_Overlap);
-	CollisionBox->OnComponentBeginOverlap.AddDynamic(this, &UTerrainChunk::HandleCameraOverlap);
-	
-	const FVector boxSize = FVector(parentTerrainGenerator->Configuration.GetNumVertices()-1);
-	CollisionBox->SetBoxExtent(boxSize);*/
+	TotalChunkSize = TerrainGenerator->Configuration.GetChunkSize() * parentTerrainGenerator->Configuration.MapScale;
+	NoiseOffset = noiseOffset;
 }
 
-void UTerrainChunk::HandleCameraOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+void UTerrainChunk::UpdateChunk(FVector cameraLocation)
 {
-	UKismetSystemLibrary::PrintString(this, TEXT("Camera Overlap"));
+	if (Status != EChunkStatus::IDLE)
+	{
+		return;
+	}
+
+	const FVector chunkLocation = GetComponentLocation();
+	const float distanceToCamera = FVector::Dist(chunkLocation, cameraLocation) - TotalChunkSize;
+
+	const int32 newLOD = FLODInfo::FindLOD(*DetailLevels, distanceToCamera);
+	if (newLOD == CurrentLOD)
+	{
+		return;
+	}
+
+	/* Request a mesh data for the new LOD if we don't have one and didn't already requested one. */
+	if (LODMeshes[newLOD] == nullptr && RequestedMeshData[newLOD] == false)
+	{
+		RequestedMeshData[newLOD] = true;
+		TerrainGenerator->RequestedMeshDataJobs.Enqueue(FMeshDataRequest(this, newLOD));
+		return;
+	}
+
+	SetNewLOD(newLOD);	
+}
+
+void UTerrainChunk::UpdateChunk()
+{
+	UpdateChunk(UTerrainChunk::CameraLocation);
+}
+
+void UTerrainChunk::SetNewLOD(int32 newLOD)
+{
+	if (newLOD == CurrentLOD || LODMeshes[newLOD] == nullptr)
+	{
+		return;
+	}
+
+	RequestedMeshData[newLOD] = true;
+
+	SetMeshSectionVisible(CurrentLOD, false);
+	SetMeshSectionVisible(newLOD, true);
+	CurrentLOD = newLOD;
 }

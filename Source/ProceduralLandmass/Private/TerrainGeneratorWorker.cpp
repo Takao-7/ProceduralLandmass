@@ -57,6 +57,16 @@ uint32 FTerrainGeneratorWorker::Run()
 	return 0;
 }
 
+void FTerrainGeneratorWorker::Stop()
+{
+	ClearJobQueue();
+}
+
+void FTerrainGeneratorWorker::Exit()
+{
+	ClearJobQueue();
+}
+
 //////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 {
@@ -64,27 +74,32 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	const int32 offsetX = currentJob.Offset.X;
 	const int32 offsetY = currentJob.Offset.Y;
 	const bool bUpdateSection = currentJob.bUpdateMeshSection;
-
+	const int32 levelOfDetail = currentJob.LevelOfDetail;
 	UTerrainChunk* chunk = currentJob.Chunk;
+
+	/* Generate height map */
 	FArray2D* heightMap = bUpdateSection ? chunk->HeightMap : new FArray2D(size, size);
-	UObject* noiseGenerator = currentJob.NoiseGenerator.GetObject();
+	UNoiseGeneratorInterface* noiseGenerator = currentJob.NoiseGenerator;
 	if (noiseGenerator)
 	{
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
 		{
-			value = INoiseGeneratorInterface::Execute_GetNoise2D(noiseGenerator, xIndex + offsetX, yIndex + offsetY);
+			value = noiseGenerator->GetNoise2D(xIndex + offsetX, yIndex + offsetY);
 		});
 	}	
-	
 	currentJob.GeneratedHeightMap = heightMap;
+
+	/* Generate or update mesh data. */
 	if (bUpdateSection)
 	{
-		currentJob.GeneratedMeshData = chunk->LODMeshes[currentJob.LevelOfDetail];
+		currentJob.GeneratedMeshData = chunk->LODMeshes[levelOfDetail];
 		currentJob.GeneratedMeshData->UpdateMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.HeightCurve);
 	}
 	else
 	{
-		currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.LevelOfDetail, currentJob.HeightCurve);
+		currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, levelOfDetail, currentJob.HeightCurve, currentJob.Offset);
+		chunk->LODMeshes[levelOfDetail] = currentJob.GeneratedMeshData;
+		chunk->HeightMap = heightMap;
 		chunk->Status = EChunkStatus::MESH_DATA_REQUESTED;
 	}
 

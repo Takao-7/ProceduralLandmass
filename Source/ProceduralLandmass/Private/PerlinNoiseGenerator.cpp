@@ -35,7 +35,7 @@ void UPerlinNoiseGenerator::InitNoiseGenerator()
 	}
 }
 
-float UPerlinNoiseGenerator::GetNoise2D_Implementation(float x, float y)
+float UPerlinNoiseGenerator::GetNoise2D(float x, float y)
 {
 	float amplitude = 1.0f;
 	float frequency = 1.0f;

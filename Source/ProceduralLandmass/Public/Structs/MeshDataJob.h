@@ -8,7 +8,7 @@ class UCurveFloat;
 struct FMeshData;
 struct FArray2D;
 class UTerrainChunk;
-class INoiseGeneratorInterface;
+class UNoiseGeneratorInterface;
 
 /**
  * 
@@ -29,7 +29,7 @@ public:
 
 	/////////////////////////////////////////////////////
 	/* The noise generator that will be used to generate the mesh data. */
-	TScriptInterface<INoiseGeneratorInterface> NoiseGenerator = nullptr;
+	UNoiseGeneratorInterface* NoiseGenerator = nullptr;
 
 	/* Multiply each height map value with this value. */
 	float HeightMultiplier = 0.0f;
@@ -43,11 +43,12 @@ public:
 	/* Do we want to update the mesh section or create a new one? */
 	bool bUpdateMeshSection = false;
 
-	/* Add this offset to the noise generator input. */
+	/* Add this offset to the noise generator input and to the uv coordinates. */
 	FVector2D Offset = FVector2D::ZeroVector;
 
 	/* A height curve to multiply the vertex height with. Optional. */
 	UCurveFloat* HeightCurve = nullptr;
+
 	
 	/////////////////////////////////////////////////////
 	/* The generated mesh data. */
@@ -68,9 +69,9 @@ public:
 	 * @param offset Add this offset to the noise generator input. This will shift the noise map by this value.
 	 * @param heightCurve (Optional) Height curve to multiply the vertex height with. The X-axis represents the noise generator output (0..1) and the Y axis the modifier.
 	 */
-	FMeshDataJob(TScriptInterface<INoiseGeneratorInterface> noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 numVertices, 
+	FMeshDataJob(UNoiseGeneratorInterface* noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 numVertices,
 		bool bUpdateMeshSection = false, FVector2D offset = FVector2D::ZeroVector, UCurveFloat* heightCurve = nullptr)
-	: Chunk(chunk), NoiseGenerator(noiseGenerator), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), NumVertices(numVertices), 
+	: Chunk(chunk), NoiseGenerator(noiseGenerator), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), NumVertices(numVertices),
 		bUpdateMeshSection(bUpdateMeshSection), Offset(offset), HeightCurve(heightCurve)
 	{
 		MyGenerator = reinterpret_cast<ATerrainGenerator*>(chunk->GetOwner());

@@ -29,6 +29,8 @@ public:
 	/* The level of detail this mesh data represents. */
 	int32 LOD = 0;
 
+	FVector2D UVOffset;
+
 	/////////////////////////////////////////////////////
 	FMeshData() {}
 	/**
@@ -37,35 +39,25 @@ public:
 	 * The generated mesh data is centered, so the mesh component's central location will be at the mesh's center.
 	 * @param heightMap The height to generate the mesh from. When @see levelOfDetail is not zero, than this must be the height map at LOD 0.
 	 */
-	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const UCurveFloat* heightCurve = nullptr)
+	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const UCurveFloat* heightCurve = nullptr, FVector2D uvOffset = FVector2D::ZeroVector)
+		: LOD(levelOfDetail), UVOffset(uvOffset)
 	{
-		LOD = levelOfDetail;
-
 		const int32 meshSize = heightMap.GetWidth();
-		const float topLeftX = (meshSize - 1) / -2.0f;
-		const float topLeftY = (meshSize - 1) / 2.0f;
-
 		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
 		const int32 verticesPerLine = (meshSize - 1) / meshSimplificationIncrement + 1;
+		const int32 numVertices = FMath::Pow(verticesPerLine, 2);
 
-		Vertices.SetNum(verticesPerLine * verticesPerLine);
+		Vertices.SetNum(numVertices);
 		Triangles.SetNum((verticesPerLine - 1) * (verticesPerLine - 1) * 6);
-		UVs.SetNum(verticesPerLine * verticesPerLine);
-		VertexColors.SetNum(verticesPerLine * verticesPerLine);
+		UVs.SetNum(numVertices);
+		VertexColors.SetNum(numVertices);
 
 		int32 vertexIndex = 0;
 		for (int32 y = 0; y < meshSize; y += meshSimplificationIncrement)
 		{
 			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
 			{
-				const float height = heightMap[x + y*meshSize];
-				const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
-				Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), height * heightMultiplier * curveValue);
-				UVs[vertexIndex] = FVector2D(x / (float)meshSize, y / (float)meshSize);
-				
-				/* Safe the height map to the red vertex color channel. */
-				const FColor color = FColor((uint8)FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height));
-				VertexColors[vertexIndex] = color;
+				SetVertexAndUV(x, y, vertexIndex, heightMap, heightMultiplier, heightCurve);
 
 				if (x < meshSize - 1 && y < meshSize - 1)
 				{
@@ -73,19 +65,34 @@ public:
 					AddTriangle(vertexIndex + verticesPerLine + 1, vertexIndex, vertexIndex + 1);
 				}
 
-				vertexIndex++;
+				++vertexIndex;
 			}
 		}
 	}
+
 	~FMeshData() {}
 
-
-	void UpdateMeshData(const FArray2D& heightMap, float heightMultiplier, const UCurveFloat* heightCurve = nullptr)
+	void SetVertexAndUV(int32 x, int32 y, int32 vertexIndex, const FArray2D& heightMap, float heightMultiplier, const UCurveFloat* heightCurve = nullptr)
 	{
 		const int32 meshSize = heightMap.GetWidth();
 		const float topLeftX = (meshSize - 1) / -2.0f;
 		const float topLeftY = (meshSize - 1) / 2.0f;
 
+		const float height = heightMap[x + y * meshSize];
+		const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
+		const float totalHeight = height * heightMultiplier * curveValue;
+		Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), totalHeight);
+
+		UVs[vertexIndex] = FVector2D(x + UVOffset.X, y + UVOffset.Y) / (float)meshSize;
+
+		/* Safe the height map to the red vertex color channel. */
+		float mappedHeight = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height * curveValue);
+		VertexColors[vertexIndex] = FColor(FMath::RoundToInt(mappedHeight), 0, 0);
+	}
+
+	void UpdateMeshData(const FArray2D& heightMap, float heightMultiplier, const UCurveFloat* heightCurve = nullptr)
+	{
+		const int32 meshSize = heightMap.GetWidth();
 		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
 
 		int32 vertexIndex = 0;
@@ -93,29 +100,20 @@ public:
 		{
 			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
 			{
-				const float height = heightMap[x + y * meshSize];
-				const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
-				Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), height * heightMultiplier * curveValue);
-				UVs[vertexIndex] = FVector2D(x / (float)meshSize, y / (float)meshSize);
-
-				/* Safe the height map to the red vertex color channel. */
-				const FColor color = FColor((uint8)FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height));
-				VertexColors[vertexIndex] = color;
-
-				vertexIndex++;
+				SetVertexAndUV(x, y, vertexIndex, heightMap, heightMultiplier, heightCurve);
+				++vertexIndex;
 			}
 		}
 	}
 
 private:
-	/////////////////////////////////////////////////////
 	int32 triangleIndex = 0;
 
 	void AddTriangle(int32 a, int32 b, int32 c)
 	{
 		if(!Triangles.IsValidIndex(triangleIndex))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Triangle index '%d' invalid!"), triangleIndex);
+			UE_LOG(LogTemp, Warning, TEXT("Triangle index '%d' invalid! LOD: %d"), triangleIndex, LOD);
 			return;
 		}
 

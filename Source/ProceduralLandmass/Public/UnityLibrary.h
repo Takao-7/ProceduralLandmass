@@ -31,7 +31,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Unity Library|Noise")
 	static float PerlinNoise(const FVector2D& vec);
 
-
 	/////////////////////////////////////////////////////
 					/* Texture */
 	/////////////////////////////////////////////////////

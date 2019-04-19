@@ -2,6 +2,7 @@
 
 #include "Public/UnityLibrary.h"
 #include "Engine/Texture2D.h"
+#include <ThreadSafeBool.h>
 
 
 /////////////////////////////////////////////////////
@@ -11,6 +12,12 @@ float UUnityLibrary::PerlinNoise(float x, float y)
 {
 	return PerlinNoise(FVector2D(x, y));
 }
+
+static FCriticalSection SemaphoreG1;
+static FCriticalSection SemaphoreG2;
+static FCriticalSection SemaphoreG3;
+static FCriticalSection SemaphoreP;
+static FCriticalSection SemaphoreG;
 
 float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 {
@@ -43,12 +50,18 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 		return rx * q[0] + ry * q[1];
 	};
 
-	static bool bIsFirstCall = true;
+	static FThreadSafeBool bIsFirstCall = true;
 	if (bIsFirstCall)
 	{
 		bIsFirstCall = false;
 
 		FRandomStream rand(5);
+
+		SemaphoreG.Lock();
+		SemaphoreG1.Lock();
+		SemaphoreG2.Lock();
+		SemaphoreG3.Lock();
+		SemaphoreP.Lock();
 
 		g2.SetNum(B + B + 2);
 		g3.SetNum(B + B + 2);
@@ -93,6 +106,12 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 				g3[B + i][j] = g3[i][j];
 			}
 		}
+
+		SemaphoreG.Unlock();
+		SemaphoreG1.Unlock();
+		SemaphoreG2.Unlock();
+		SemaphoreG3.Unlock();
+		SemaphoreP.Unlock();
 	}
 
 	int32 bx0, bx1, by0, by1, b00, b10, b01, b11;
@@ -103,6 +122,7 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	setup(0, bx0, bx1, rx0, rx1, t);
 	setup(1, by0, by1, ry0, ry1, t);
 
+	SemaphoreP.Lock();
 	i = p[bx0];
 	j = p[bx1];
 
@@ -110,10 +130,12 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	b10 = p[j + by0];
 	b01 = p[i + by1];
 	b11 = p[j + by1];
+	SemaphoreP.Unlock();
 
 	sx = sCurve(rx0);
 	sy = sCurve(ry0);
 
+	SemaphoreG2.Lock();
 	q = g2[b00]; u = at2(rx0, ry0, q);
 	q = g2[b10]; v = at2(rx1, ry0, q);
 	a = FMath::Lerp(u, v, sx);
@@ -121,6 +143,7 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	q = g2[b01]; u = at2(rx0, ry1, q);
 	q = g2[b11]; v = at2(rx1, ry1, q);
 	b = FMath::Lerp(u, v, sx);
+	SemaphoreG2.Unlock();
 
 	return FMath::Lerp(a, b, sy);
 }

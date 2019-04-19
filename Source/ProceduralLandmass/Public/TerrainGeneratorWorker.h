@@ -35,6 +35,8 @@ public:
 	/* Clears the job queue and deletes the data inside. */
 	void ClearJobQueue();
 
+	/* Does the actual work of this thread. This function is static,
+	 * so it can be called manually if we are not using multi-threading. */
 	static void DoWork(FMeshDataJob& currentJob);
 
 	FTerrainGeneratorWorker();
@@ -51,15 +53,15 @@ private:
 	FRunnableThread* Thread;
 
 	static int32 ThreadCounter;
-	static int32 GetNewThreadNumber() { return ++ThreadCounter; };
+	static int32 GetNewThreadNumber() { return ThreadCounter++; };
 
 
 	/////////////////////////////////////////////////////
 				/* Runnable interface */
 	/////////////////////////////////////////////////////
 public:
-	virtual bool Init() override { return true; };
+	//virtual bool Init() override { return true; };
 	virtual uint32 Run() override;
-	virtual void Stop() override { Pause(); };
-	virtual void Exit() override {};
+	virtual void Stop() override;
+	virtual void Exit() override;
 };
