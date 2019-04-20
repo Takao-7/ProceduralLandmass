@@ -44,11 +44,11 @@ public:
 
 	/** Number of chunks per axis we will generate. So the entire generated terrain will consist of 2 times this many chunks. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
-	int32 NumChunks = 3;
+	int32 NumChunks = 20;
 
 	/** Multiplier for height map. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 1.0f))
-	float Amplitude = 20.0f;
+	float Amplitude = 17.5;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UCurveFloat* HeightCurve = nullptr;
@@ -56,14 +56,28 @@ public:
 	UPROPERTY(BlueprintReadWrite)
 	TArray<FLODInfo> LODs;
 
+	bool operator==(const FTerrainConfiguration& otherConfig) const
+	{
+		return
+		(
+			NumberOfThreads == otherConfig.NumberOfThreads &&
+			NoiseGenerator == otherConfig.NoiseGenerator &&
+			NumVertices == otherConfig.NumVertices &&
+			MapScale == otherConfig.MapScale &&
+			NumChunks == otherConfig.NumChunks &&
+			Amplitude == otherConfig.Amplitude &&
+			HeightCurve == otherConfig.HeightCurve
+		);
+	}
+
 	FTerrainConfiguration()
 	{
 		FLODInfo newLOD;
 		newLOD.LOD = 0;
-		newLOD.VisibleDistanceThreshold = 10000.0f;
+		newLOD.VisibleDistanceThreshold = 7500.0f;
 		LODs.Add(newLOD);			
 
-		for (int32 i = 1; i <= 10; ++i)
+		for (int32 i = 1; i <= 12; ++i)
 		{
 			if(GetChunkSize() % (2*i) != 0)
 			{
@@ -71,7 +85,7 @@ public:
 			}
 
 			newLOD.LOD = i;
-			newLOD.VisibleDistanceThreshold = 10000.0f * (i+1);
+			newLOD.VisibleDistanceThreshold = 7500.0f * (i+1);
 			LODs.Add(newLOD);
 		}		
 	}
@@ -80,17 +94,17 @@ public:
 	 * Returns the actual number of threads. When @see NumberOfThreads was set to 0, then we will use one thread
 	 * per chunk so the actual number of threads can be 2x the number of chunks per line.
 	 */
-	int32 GetNumberOfThreads() const
+	FORCEINLINE int32 GetNumberOfThreads() const
 	{
 		return NumberOfThreads == -1 ? NumChunks * 2 : NumberOfThreads;
 	}
 
-	int32 GetNumVertices() const
+	FORCEINLINE int32 GetNumVertices() const
 	{
 		return (int32)NumVertices;
 	}
 
-	int32 GetChunkSize() const
+	FORCEINLINE int32 GetChunkSize() const
 	{
 		return GetNumVertices() - 1;
 	}

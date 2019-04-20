@@ -4,6 +4,7 @@
 #include "NoiseGeneratorInterface.h"
 #include "HAL/RunnableThread.h"
 #include "TerrainGenerator.h"
+#include <Kismet/KismetSystemLibrary.h>
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
@@ -70,12 +71,19 @@ void FTerrainGeneratorWorker::Exit()
 //////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 {
+	UTerrainChunk* chunk = currentJob.Chunk;
+	const int32 levelOfDetail = currentJob.LevelOfDetail;
+	const bool bUpdateSection = currentJob.bUpdateMeshSection;
+	if (bUpdateSection && chunk->LODMeshes[levelOfDetail] == nullptr)
+	{
+		FString text = FString::Printf(TEXT("No mesh for requested LOD %d!"), levelOfDetail);
+		UKismetSystemLibrary::PrintString(chunk, text, false, true, FLinearColor::Yellow);
+		return;
+	}
+
 	const int32 size = currentJob.NumVertices;
 	const int32 offsetX = currentJob.Offset.X;
 	const int32 offsetY = currentJob.Offset.Y;
-	const bool bUpdateSection = currentJob.bUpdateMeshSection;
-	const int32 levelOfDetail = currentJob.LevelOfDetail;
-	UTerrainChunk* chunk = currentJob.Chunk;
 
 	/* Generate height map */
 	FArray2D* heightMap = bUpdateSection ? chunk->HeightMap : new FArray2D(size, size);

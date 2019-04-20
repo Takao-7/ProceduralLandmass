@@ -7,7 +7,6 @@
 #include "Structs/TerrainConfiguration.h"
 #include "MeshDataJob.h"
 #include "Queue.h"
-#include <Runnable.h>
 #include "TerrainGenerator.generated.h"
 
 
@@ -21,7 +20,6 @@ class AStaticMeshActor;
 struct FMeshData;
 struct FLinearColor;
 class FTerrainGeneratorWorker;
-class UWorld;
 
 
 /* Delegate for when the mesh data queue is finished. */
@@ -86,6 +84,9 @@ protected:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	bool bGenerateMap = false;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
+	bool bClearTerrain = false;
+
 	/* If true we will generate the map each time a value changes. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	bool bAutoUpdate = true;
@@ -101,35 +102,35 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
 	FTerrainConfiguration Configuration;
 
-	//UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
-	//TArray<FTerrainType> Regions;
-
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
 	UMaterial* MeshMaterial;
 
-private:
-	/* Array of all worker threads. */
-	TArray<FTerrainGeneratorWorker*> WorkerThreads;
-
-	TMap<FVector2D, UTerrainChunk*> Chunks;
-	
-	FTimerHandle TimerHandleFinishedJobsQueue;
-	FTimerHandle TimerHandleUpdateChunkLOD;
-
-	class FUpdateChunkLODThread* UpdateChunkLODThread;
-
-public:
 	/* Queue for finished jobs */
 	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
 
 	/* Queue for terrain chunks that need new mesh data. */
-	TQueue<FMeshDataRequest, EQueueMode::Mpsc> RequestedMeshDataJobs;
+	TQueue<FMeshDataRequest, EQueueMode::Spsc> RequestedMeshDataJobs;
 
 	/* The number of unfinished mesh data jobs. */
 	FThreadSafeCounter NumUnfinishedMeshDataJobs;
 
 	/* Event when all mesh data jobs are completed. */
 	FOnMeshDataQueueFinished MeshDataQueueFinishedDelegate;
+
+private:
+	/* Array of all worker threads. */
+	TArray<FTerrainGeneratorWorker*> WorkerThreads;
+
+	/* All chunks that belong to this terrain. */
+	TMap<FVector2D, UTerrainChunk*> Chunks;
+	
+	FTimerHandle TimerHandleFinishedJobsQueue;
+	FTimerHandle TimerHandleEditorTick;
+
+protected:
+	/* The configuration before it changed. Used to determent which values did change. */
+	UPROPERTY(BlueprintReadWrite, Category = "Map Generator")
+	FTerrainConfiguration OldConfiguration;
 
 
 	/////////////////////////////////////////////////////
@@ -142,14 +143,16 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale);
 
-	UFUNCTION(BlueprintPure, Category = "Map Generator")
-	bool ShouldGenerateMap() const { return bAutoUpdate || bGenerateMap; };
-
+	/* Generates the entire terrain. Clears the current terrain chunks if existing. */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void GenerateMap();
+	void GenerateTerrain();
 
+	/* Updates the terrain, if only the noise generator has changed. */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void UpdateMap();
+
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	void ClearTerrain();
 
 	void CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, int32 numVertices, bool bUpdateMeshSection = false, UNoiseGeneratorInterface* noiseGenerator = nullptr, const FVector2D& noiseOffset = FVector2D::ZeroVector);
 
@@ -162,24 +165,7 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	void ClearThreads();
-
-	FORCEINLINE void StartJobQueueTimer()
-	{
-		UWorld* world = GetWorld();
-		if (world)
-		{
-			world->GetTimerManager().SetTimer(TimerHandleFinishedJobsQueue, this, &ATerrainGenerator::HandleFinishedMeshDataJobs, 1 / 60.0f, true);
-		}
-	}
-
-	FORCEINLINE void RemoveJobQueueTimer()
-	{
-		UWorld* world = GetWorld();
-		if (world)
-		{
-			world->GetTimerManager().ClearTimer(TimerHandleFinishedJobsQueue);
-		}
-	}
+	void ClearTimers();
 
 public:	
 	// Sets default values for this actor's properties
@@ -221,51 +207,4 @@ public:
 	FVector2D CalculateNoiseOffset(int32 x, int32 y);
 
 	FVector GetCameraLocation();
-};
-
-
-/**
- * This thread will update the chunk's LOD.
- */
-class PROCEDURALLANDMASS_API FUpdateChunkLODThread : public FRunnable
-{
-public:
-	/**
-	 * @param terrainGenerator
-	 * @param chunks The chunks to update. We will copy the map.
-	 */
-	FUpdateChunkLODThread(ATerrainGenerator* terrainGenerator, const TMap<FVector2D, UTerrainChunk*>& chunks);
-	~FUpdateChunkLODThread();
-
-	FThreadSafeBool bShouldRun = true;
-
-	/* The distance the camera has to move in order to start check for changed LODs. */
-	float MoveThreshold = 100.0f;
-
-private:
-	/* The thread we are running on. */
-	FRunnableThread* Thread;
-
-	/* This will be used to let this thread wait. */
-	FEvent* Semaphore;
-
-	ATerrainGenerator* TerrainGenerator;
-
-	TMap<FVector2D, UTerrainChunk*> Chunks;
-
-	/* The camera location in this frame. */
-	FVector CameraLocation;
-
-	/* The camera location from last tick. */
-	FVector LastCameraLocation;
-	
-
-	/////////////////////////////////////////////////////
-				/* Runnable interface */
-	/////////////////////////////////////////////////////
-public:
-	//virtual bool Init() override { return true; };
-	virtual uint32 Run() override;
-	//virtual void Stop() override;
-	//virtual void Exit() override;
 };

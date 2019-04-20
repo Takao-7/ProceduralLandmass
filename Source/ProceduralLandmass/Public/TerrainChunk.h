@@ -42,7 +42,8 @@ public:
 	TArray<FMeshData*> LODMeshes;
 	FArray2D* HeightMap;
 
-	/* The player's camera location. Used for level of detail. */
+	/* The player's camera location. Used for level of detail.
+	 * This location is updated in the Terrain generator's tick functions. */
 	static FVector CameraLocation;
 
 	/* This chunks noise offset. */
@@ -60,6 +61,8 @@ private:
 
 	/////////////////////////////////////////////////////
 public:
+	~UTerrainChunk();
+
 	void SetNewLOD(int32 newLOD);
 	void InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, FVector2D noiseOffset = FVector2D::ZeroVector);
 	void UpdateChunk(FVector cameraLocation);
