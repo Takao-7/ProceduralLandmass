@@ -3,6 +3,7 @@
 #include "Array2D.h"
 #include "Curves/CurveFloat.h"
 #include "ProceduralMeshComponent.h"
+#include <Kismet/KismetSystemLibrary.h>
 #include "MeshData.generated.h"
 
 
@@ -29,7 +30,7 @@ public:
 	/* The level of detail this mesh data represents. */
 	int32 LOD = 0;
 
-	FVector2D UVOffset;
+	float MapScale = 100.0f;
 
 	/////////////////////////////////////////////////////
 	FMeshData() {}
@@ -39,8 +40,8 @@ public:
 	 * The generated mesh data is centered, so the mesh component's central location will be at the mesh's center.
 	 * @param heightMap The height to generate the mesh from. When @see levelOfDetail is not zero, than this must be the height map at LOD 0.
 	 */
-	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const UCurveFloat* heightCurve = nullptr, FVector2D uvOffset = FVector2D::ZeroVector)
-		: LOD(levelOfDetail), UVOffset(uvOffset)
+	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const UCurveFloat* heightCurve = nullptr, float mapScale = 100.0f)
+		: LOD(levelOfDetail), MapScale(mapScale)
 	{
 		const int32 meshSize = heightMap.GetWidth();
 		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
@@ -48,9 +49,11 @@ public:
 		const int32 numVertices = FMath::Pow(verticesPerLine, 2);
 
 		Vertices.SetNum(numVertices);
+		Normals.SetNum(numVertices);
+		Tangents.SetNum(numVertices);
 		Triangles.SetNum((verticesPerLine - 1) * (verticesPerLine - 1) * 6);
 		UVs.SetNum(numVertices);
-		VertexColors.SetNum(numVertices);
+		VertexColors.SetNum(numVertices);	
 
 		int32 vertexIndex = 0;
 		for (int32 y = 0; y < meshSize; y += meshSimplificationIncrement)
@@ -68,6 +71,49 @@ public:
 				++vertexIndex;
 			}
 		}
+
+		/* Calculate normals. */
+		for (int32 i = 0; i < Vertices.Num(); i++)
+		{
+			Normals[i] = FVector::ZeroVector;
+		}
+
+		int32 triangleCount = Triangles.Num() / 3;
+		for (int32 i = 0; i < triangleCount; i++)
+		{
+			int32 normalTriangleIndex = i * 3;
+			int32 vertexIndexA = Triangles[normalTriangleIndex];
+			int32 vertexIndexB = Triangles[normalTriangleIndex + 1];
+			int32 vertexIndexC = Triangles[normalTriangleIndex + 2];
+
+			/* Calculate triangle normal */
+			const FVector pointA = Vertices[vertexIndexA];
+			const FVector pointB = Vertices[vertexIndexB];
+			const FVector pointC = Vertices[vertexIndexC];
+
+			const FVector sideAB = pointB - pointA;
+			const FVector sideAC = pointC - pointA;
+
+			FVector triangleNormal = FVector::CrossProduct(sideAC, sideAB);
+			triangleNormal.Normalize();
+
+			// We add the normals together, because a vertex normal is the average
+			// normal across it's connected faces.
+			Normals[vertexIndexA] += triangleNormal;
+			Normals[vertexIndexB] += triangleNormal;
+			Normals[vertexIndexC] += triangleNormal;
+		}
+
+		for (FVector& normal : Normals)
+		{
+			normal.Normalize();
+		}
+
+		/* Calculate tangents */
+		for (int32 i = 0; i < Vertices.Num(); i++)
+		{
+			Tangents[i] = FProcMeshTangent(FVector::CrossProduct(Normals[i], FVector(1.0f, 0.0f, 0.0f)), false);
+		}
 	}
 
 	~FMeshData() {}
@@ -83,7 +129,7 @@ public:
 		const float totalHeight = height * heightMultiplier * curveValue;
 		Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), totalHeight);
 
-		UVs[vertexIndex] = FVector2D(x + UVOffset.X, y + UVOffset.Y) / (float)meshSize;
+		UVs[vertexIndex] = (FVector2D(x, y) * MapScale) / (float)meshSize;
 
 		/* Safe the height map to the red vertex color channel. */
 		float mappedHeight = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height * curveValue);

@@ -46,6 +46,9 @@ public:
 	 * This location is updated in the Terrain generator's tick functions. */
 	static FVector CameraLocation;
 
+	/* The player's camera location in the last frame. */
+	static FVector LastCameraLocation;
+
 	/* This chunks noise offset. */
 	FVector2D NoiseOffset;
 
@@ -59,12 +62,17 @@ private:
 	/* This chunk's size, including it's parent terrain generator scale. */
 	int32 TotalChunkSize = 0;
 
+	FBox Box;
+
 	/////////////////////////////////////////////////////
 public:
 	~UTerrainChunk();
 
 	void SetNewLOD(int32 newLOD);
 	void InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, FVector2D noiseOffset = FVector2D::ZeroVector);
+
+	void SetChunkBoundingBox();
+
 	void UpdateChunk(FVector cameraLocation);
 	void UpdateChunk();
 };

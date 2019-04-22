@@ -6,6 +6,7 @@
 
 
 FVector UTerrainChunk::CameraLocation = FVector::ZeroVector;
+FVector UTerrainChunk::LastCameraLocation = FVector::ZeroVector;
 
 
 UTerrainChunk::~UTerrainChunk()
@@ -25,8 +26,9 @@ UTerrainChunk::~UTerrainChunk()
 
 void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, FVector2D noiseOffset /*= FVector2D::ZeroVector*/)
 {
-	this->DetailLevels = lodInfoArray;
-	this->TerrainGenerator = parentTerrainGenerator;
+	DetailLevels = lodInfoArray;
+	TerrainGenerator = parentTerrainGenerator;
+	NoiseOffset = noiseOffset;
 
 	const int32 maxLOD = DetailLevels->Last().LOD;
 	LODMeshes.SetNum(maxLOD + 1);
@@ -34,18 +36,23 @@ void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<
 	AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::SnapToTargetIncludingScale);
 
 	TotalChunkSize = TerrainGenerator->Configuration.GetChunkSize() * parentTerrainGenerator->Configuration.MapScale;
-	NoiseOffset = noiseOffset;
+}
+
+void UTerrainChunk::SetChunkBoundingBox()
+{
+	int32 chunksSize = TerrainGenerator->Configuration.GetChunkSize();
+	Box = FBox::BuildAABB(GetComponentLocation(), FVector(chunksSize / 2));
 }
 
 void UTerrainChunk::UpdateChunk(FVector cameraLocation)
 {
-	if (Status != EChunkStatus::IDLE)
+	if (Status != EChunkStatus::IDLE || cameraLocation == FVector::ZeroVector)
 	{
 		return;
 	}
 
 	const FVector chunkLocation = GetComponentLocation();
-	const float distanceToCamera = FVector::Dist(chunkLocation, cameraLocation) - TotalChunkSize;
+	const float distanceToCamera = FMath::Sqrt(Box.ComputeSquaredDistanceToPoint(cameraLocation));
 
 	const int32 newLOD = FLODInfo::FindLOD(*DetailLevels, distanceToCamera);
 	if (newLOD == CurrentLOD)

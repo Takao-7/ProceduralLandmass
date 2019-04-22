@@ -20,31 +20,31 @@ class FRunnableThread;
 class PROCEDURALLANDMASS_API FTerrainGeneratorWorker : public FRunnable
 {	
 public:
+	FTerrainGeneratorWorker();
+	~FTerrainGeneratorWorker();
+
 	/* Job queue for this worker. */
 	TQueue<FMeshDataJob, EQueueMode::Spsc> PendingJobs;
 
-	/* Should this thread be killed? */
-	FThreadSafeBool bWorkFinished = false;
-
-	/* Put this thread to sleep at the end of it's current job. */
-	void Pause() { bPause = true; };
-
-	/* Un-pause this thread. */
-	void UnPause();
-
-	/* Clears the job queue and deletes the data inside. */
-	void ClearJobQueue();
+	/* Priority job queue for this worker. */
+	TQueue<FMeshDataJob, EQueueMode::Spsc> PriorityJobs;
 
 	/* Does the actual work of this thread. This function is static,
 	 * so it can be called manually if we are not using multi-threading. */
 	static void DoWork(FMeshDataJob& currentJob);
 
-	FTerrainGeneratorWorker();
-	~FTerrainGeneratorWorker();
+	FORCEINLINE void Pause() { bPause = true; }
+	FORCEINLINE void UnPause()
+	{
+		bPause = false;
+		Semaphore->Trigger();
+	}
 
 private:
-	/* Should this thread pause until woken up? (@see Semaphore). */
 	FThreadSafeBool bPause = false;
+
+	/* Should this thread be killed? */
+	FThreadSafeBool bWorkFinished = false;
 
 	/* This will be used to let this thread wait until it is woken up the main thread. */
 	FEvent* Semaphore;
@@ -55,6 +55,9 @@ private:
 	static int32 ThreadCounter;
 	static int32 GetNewThreadNumber() { return ThreadCounter++; };
 
+	/* Clears the job queue and deletes the data inside. */
+	void ClearJobQueue();
+
 
 	/////////////////////////////////////////////////////
 				/* Runnable interface */
@@ -63,5 +66,5 @@ public:
 	//virtual bool Init() override { return true; };
 	virtual uint32 Run() override;
 	virtual void Stop() override;
-	virtual void Exit() override;
+	//virtual void Exit() override;
 };

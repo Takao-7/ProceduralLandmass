@@ -8,6 +8,7 @@
 
 
 class UTexture2D;
+struct FArray2D;
 
 
 /**
@@ -30,6 +31,20 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Unity Library|Noise")
 	static float PerlinNoise(const FVector2D& vec);
+
+
+	/////////////////////////////////////////////////////
+					/* Falloff Generator */
+	/////////////////////////////////////////////////////
+	static FArray2D* GenerateFalloffMap(int32 size);
+
+	/**
+	 * @param x The x-coordinate on the map
+	 * @param y The y-coordinate on the map
+	 * @param size The falloff map size.
+	 */
+	static float GetValueWithFalloff(int32 x, int32 y, int32 size);
+
 
 	/////////////////////////////////////////////////////
 					/* Texture */

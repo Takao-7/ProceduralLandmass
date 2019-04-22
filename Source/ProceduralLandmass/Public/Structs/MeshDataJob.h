@@ -49,6 +49,7 @@ public:
 	/* A height curve to multiply the vertex height with. Optional. */
 	UCurveFloat* HeightCurve = nullptr;
 
+	bool bUseFalloffMap = false;
 	
 	/////////////////////////////////////////////////////
 	/* The generated mesh data. */
@@ -58,7 +59,7 @@ public:
 	FArray2D* GeneratedHeightMap = nullptr;
 
 	/////////////////////////////////////////////////////
-	FMeshDataJob() {};
+	FMeshDataJob() {}
 
 	/**
 	 * @param noiseGenerator Noise generator to be used for generating the height map
@@ -70,10 +71,10 @@ public:
 	 * @param heightCurve (Optional) Height curve to multiply the vertex height with. The X-axis represents the noise generator output (0..1) and the Y axis the modifier.
 	 */
 	FMeshDataJob(UNoiseGeneratorInterface* noiseGenerator, UTerrainChunk* chunk, float heightMultiplier, int32 levelOfDetail, int32 numVertices,
-		bool bUpdateMeshSection = false, FVector2D offset = FVector2D::ZeroVector, UCurveFloat* heightCurve = nullptr)
+		bool bUpdateMeshSection = false, FVector2D offset = FVector2D::ZeroVector, UCurveFloat* heightCurve = nullptr, bool bFalloffMap = false)
 	: Chunk(chunk), NoiseGenerator(noiseGenerator), HeightMultiplier(heightMultiplier), LevelOfDetail(levelOfDetail), NumVertices(numVertices),
-		bUpdateMeshSection(bUpdateMeshSection), Offset(offset), HeightCurve(heightCurve)
+		bUpdateMeshSection(bUpdateMeshSection), Offset(offset), HeightCurve(heightCurve), bUseFalloffMap(bFalloffMap)
 	{
 		MyGenerator = reinterpret_cast<ATerrainGenerator*>(chunk->GetOwner());
-	};
+	}
 };

@@ -8,6 +8,9 @@ struct FLODInfo
 	GENERATED_BODY()
 
 public:
+	FLODInfo() {}
+	FLODInfo(int32 lod, float distance) : LOD(lod), VisibleDistanceThreshold(distance) {}
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0, ClampMax = 8))
 	int32 LOD;
 

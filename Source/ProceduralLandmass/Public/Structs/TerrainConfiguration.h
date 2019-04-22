@@ -5,6 +5,7 @@
 
 
 class UNoiseGeneratorInterface;
+struct FArray2D;
 
 
 /* The number of vertices each chunk has per direction. */
@@ -14,6 +15,12 @@ enum class ENumVertices : uint8
 	x61 = 61,
 	x121 = 121,
 	x241 = 241
+};
+
+UENUM(BlueprintType)
+enum class ECollisonMode : uint8
+{
+	NoCollision
 };
 
 
@@ -28,7 +35,7 @@ public:
 	 * Settings this to 0 will use one thread per chunk to generate
 	 * and a value of -1 will not use any threading. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = -1))
-	int32 NumberOfThreads = 7;
+	int32 NumberOfThreads = 4;
 
 	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -51,9 +58,22 @@ public:
 	float Amplitude = 17.5;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bUseFalloffMap = false;
+
+	/* When using a falloff map, should it's size be equal to one chunk (true) or
+	 * the entire terrain (false)? */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bFalloffMapPerChunk = false;
+
+	FArray2D* FalloffMap = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	ECollisonMode Collision = ECollisonMode::NoCollision;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UCurveFloat* HeightCurve = nullptr;
 
-	UPROPERTY(BlueprintReadWrite)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TArray<FLODInfo> LODs;
 
 	bool operator==(const FTerrainConfiguration& otherConfig) const
@@ -70,24 +90,42 @@ public:
 		);
 	}
 
-	FTerrainConfiguration()
+	void InitLODs()
 	{
+		LODs.Empty();
+
+		const float distance = 10000.0f;
+
 		FLODInfo newLOD;
 		newLOD.LOD = 0;
-		newLOD.VisibleDistanceThreshold = 7500.0f;
-		LODs.Add(newLOD);			
+		newLOD.VisibleDistanceThreshold = distance;
+		LODs.Add(newLOD);
 
-		for (int32 i = 1; i <= 12; ++i)
+		int32 i = 1;
+		while (LODs.Num() <= 6)
 		{
-			if(GetChunkSize() % (2*i) != 0)
+			if (GetChunkSize() % (2 * i) != 0)
 			{
 				continue;
 			}
 
 			newLOD.LOD = i;
-			newLOD.VisibleDistanceThreshold = 7500.0f * (i+1);
+			newLOD.VisibleDistanceThreshold = distance * (i + 1);
 			LODs.Add(newLOD);
-		}		
+			++i;
+		}
+
+		/*for (int32 i = 1; i <= GetNumVertices(); ++i)
+		{
+			if (GetChunkSize() % (2 * i) != 0)
+			{
+				continue;
+			}
+
+			newLOD.LOD = i;
+			newLOD.VisibleDistanceThreshold = 5000.0f * (i + 1);
+			LODs.Add(newLOD);
+		}*/
 	}
 
 	/**

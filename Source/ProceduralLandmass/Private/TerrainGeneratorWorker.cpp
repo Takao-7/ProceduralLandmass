@@ -5,6 +5,7 @@
 #include "HAL/RunnableThread.h"
 #include "TerrainGenerator.h"
 #include <Kismet/KismetSystemLibrary.h>
+#include "UnityLibrary.h"
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
@@ -14,7 +15,6 @@ FTerrainGeneratorWorker::FTerrainGeneratorWorker()
 	Semaphore = FGenericPlatformProcess::GetSynchEventFromPool(false);
 
 	bWorkFinished = false;
-	bPause = true;
 
 	const FString threadName = TEXT("Terrain Generator Worker Thread #") + FString::FromInt(GetNewThreadNumber());
 	Thread = FRunnableThread::Create(this, *threadName);
@@ -24,6 +24,7 @@ FTerrainGeneratorWorker::~FTerrainGeneratorWorker()
 {
 	delete Thread;
 	Thread = nullptr;
+	ClearJobQueue();
 }
 
 //////////////////////////////////////////////////////
@@ -31,28 +32,16 @@ uint32 FTerrainGeneratorWorker::Run()
 {
 	while(!bWorkFinished)
 	{
-		if (bPause)
-		{
-			/* This thread will 'sleep' at this line until it is woken. */
-			Semaphore->Wait();
-			continue;
-		}
-
 		FMeshDataJob currentJob;
-		const bool bHasJob = PendingJobs.Dequeue(currentJob);
-		if (!bHasJob)
+		while (!bWorkFinished && !bPause && (PriorityJobs.Dequeue(currentJob) || PendingJobs.Dequeue(currentJob)))
 		{
-			/* No jobs left, we wait a little and then go into sleep if there are still no jobs. */
-			Semaphore->Wait(1000);
-			if (PendingJobs.IsEmpty())
-			{
-				Semaphore->Wait();
-			}
-
-			continue;
+			DoWork(currentJob);
 		}
 
-		DoWork(currentJob);
+		if(!bWorkFinished)
+		{
+			Semaphore->Wait();
+		}
 	}
 
 	return 0;
@@ -60,12 +49,8 @@ uint32 FTerrainGeneratorWorker::Run()
 
 void FTerrainGeneratorWorker::Stop()
 {
-	ClearJobQueue();
-}
-
-void FTerrainGeneratorWorker::Exit()
-{
-	ClearJobQueue();
+	bPause = true;
+	bWorkFinished = true;
 }
 
 //////////////////////////////////////////////////////
@@ -76,8 +61,7 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	const bool bUpdateSection = currentJob.bUpdateMeshSection;
 	if (bUpdateSection && chunk->LODMeshes[levelOfDetail] == nullptr)
 	{
-		FString text = FString::Printf(TEXT("No mesh for requested LOD %d!"), levelOfDetail);
-		UKismetSystemLibrary::PrintString(chunk, text, false, true, FLinearColor::Yellow);
+		UE_LOG(LogTemp, Warning, TEXT("No mesh for requested LOD %d!"), levelOfDetail);
 		return;
 	}
 
@@ -88,13 +72,25 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	/* Generate height map */
 	FArray2D* heightMap = bUpdateSection ? chunk->HeightMap : new FArray2D(size, size);
 	UNoiseGeneratorInterface* noiseGenerator = currentJob.NoiseGenerator;
-	if (noiseGenerator)
+	if (IsValid(noiseGenerator))
 	{
+		const bool bUseFalloffPerChunk = currentJob.MyGenerator->Configuration.bFalloffMapPerChunk;
+		const int32 falloffMapSize = bUseFalloffPerChunk ? currentJob.NumVertices : currentJob.NumVertices * currentJob.MyGenerator->Configuration.NumChunks;
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
 		{
-			value = noiseGenerator->GetNoise2D(xIndex + offsetX, yIndex + offsetY);
+			if (IsValid(noiseGenerator))
+			{
+				float fallOff = 0;
+				if (currentJob.bUseFalloffMap)
+				{
+					fallOff = UUnityLibrary::GetValueWithFalloff(xIndex + offsetX, yIndex + offsetY, falloffMapSize);
+				}
+
+				value = noiseGenerator->GetNoise2D(xIndex + offsetX, yIndex + offsetY) - fallOff;
+				value = FMath::Clamp(value, 0.0f, 1.0f);
+			}
 		});
-	}	
+	}
 	currentJob.GeneratedHeightMap = heightMap;
 
 	/* Generate or update mesh data. */
@@ -105,27 +101,18 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	}
 	else
 	{
-		currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, levelOfDetail, currentJob.HeightCurve, currentJob.Offset);
-		chunk->LODMeshes[levelOfDetail] = currentJob.GeneratedMeshData;
-		chunk->HeightMap = heightMap;
-		chunk->Status = EChunkStatus::MESH_DATA_REQUESTED;
+		const float mapScale = currentJob.MyGenerator->Configuration.MapScale;
+		currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, levelOfDetail, currentJob.HeightCurve, mapScale);
 	}
 
 	currentJob.MyGenerator->FinishedMeshDataJobs.Enqueue(currentJob);
 }
 
 //////////////////////////////////////////////////////
-void FTerrainGeneratorWorker::UnPause()
-{
-	bPause = false;
-	Semaphore->Trigger();
-}
-
-//////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::ClearJobQueue()
 {
 	FMeshDataJob job;
-	while (PendingJobs.Dequeue(job))
+	while (PendingJobs.Dequeue(job) || PriorityJobs.Dequeue(job))
 	{
 		delete job.GeneratedHeightMap;
 		delete job.GeneratedMeshData;

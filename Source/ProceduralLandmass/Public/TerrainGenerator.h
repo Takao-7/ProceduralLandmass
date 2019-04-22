@@ -26,46 +26,12 @@ class FTerrainGeneratorWorker;
 DECLARE_MULTICAST_DELEGATE(FOnMeshDataQueueFinished);
 
 
-USTRUCT(BlueprintType)
-struct FTerrainType
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FString Name;
-
-	/* The minimum height that this layer will start at. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0.0f, ClampMax = 1.0f))
-	float StartHeight;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FLinearColor Color;
-};
-
-
 UENUM(BlueprintType)
 enum class EDrawMode : uint8
 {
 	NoiseMap,
 	ColorMap,
 	Mesh
-};
-
-USTRUCT(BlueprintType)
-struct FMeshDataRequest
-{
-	GENERATED_BODY()
-
-public:
-	FMeshDataRequest() {}
-	FMeshDataRequest(UTerrainChunk* chunk, int32 lod) : Chunk(chunk), LOD(lod) {}
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UTerrainChunk* Chunk;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 LOD;
 };
 
 
@@ -92,6 +58,9 @@ protected:
 	bool bAutoUpdate = true;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
+	bool bVisualizeNormals = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	EDrawMode DrawMode;
 
 	/* While in the editor override the LOD with this value for EVERY chunk. A value of -1 means no override. */
@@ -107,9 +76,6 @@ public:
 
 	/* Queue for finished jobs */
 	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
-
-	/* Queue for terrain chunks that need new mesh data. */
-	TQueue<FMeshDataRequest, EQueueMode::Spsc> RequestedMeshDataJobs;
 
 	/* The number of unfinished mesh data jobs. */
 	FThreadSafeCounter NumUnfinishedMeshDataJobs;
@@ -193,8 +159,6 @@ public:
 	static UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
 	
 	void HandleFinishedMeshDataJobs();
-
-	void HandleRequestedMeshDataJobs();
 
 	void UpdateAllChunks(int32 levelOfDetail = 0);
 

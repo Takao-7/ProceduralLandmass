@@ -3,6 +3,7 @@
 #include "Public/UnityLibrary.h"
 #include "Engine/Texture2D.h"
 #include <ThreadSafeBool.h>
+#include "Array2D.h"
 
 
 /////////////////////////////////////////////////////
@@ -13,11 +14,9 @@ float UUnityLibrary::PerlinNoise(float x, float y)
 	return PerlinNoise(FVector2D(x, y));
 }
 
-static FCriticalSection SemaphoreG1;
+static FCriticalSection MainSemaphore;
 static FCriticalSection SemaphoreG2;
-static FCriticalSection SemaphoreG3;
 static FCriticalSection SemaphoreP;
-static FCriticalSection SemaphoreG;
 
 float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 {
@@ -57,10 +56,8 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 
 		FRandomStream rand(5);
 
-		SemaphoreG.Lock();
-		SemaphoreG1.Lock();
+		MainSemaphore.Lock();
 		SemaphoreG2.Lock();
-		SemaphoreG3.Lock();
 		SemaphoreP.Lock();
 
 		g2.SetNum(B + B + 2);
@@ -107,10 +104,8 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 			}
 		}
 
-		SemaphoreG.Unlock();
-		SemaphoreG1.Unlock();
+		MainSemaphore.Unlock();
 		SemaphoreG2.Unlock();
-		SemaphoreG3.Unlock();
 		SemaphoreP.Unlock();
 	}
 
@@ -148,6 +143,44 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	return FMath::Lerp(a, b, sy);
 }
 
+
+/////////////////////////////////////////////////////
+				/* Falloff Generator */
+/////////////////////////////////////////////////////
+FArray2D* UUnityLibrary::GenerateFalloffMap(int32 size)
+{
+	const auto evaluate = [](float value)
+	{
+		const float a = 3;
+		const float b = 2.2f;
+		return FMath::Pow(value, b) / (FMath::Pow(value, a) + FMath::Pow(b - b * value, a));
+	};
+
+	FArray2D* map = new FArray2D(size, size);
+	map->ForEachWithIndex([=](int32 x, int32 y, float& value)
+	{
+		float xValue = x / (float)size * 2.0f - 1;
+		float yValue = y / (float)size * 2.0f - 1;
+		value = evaluate(FMath::Max(FMath::Abs(xValue), FMath::Abs(yValue)));
+	});
+
+	return map;
+}
+
+float UUnityLibrary::GetValueWithFalloff(int32 x, int32 y, int32 size)
+{
+	const auto evaluate = [](float value)
+	{
+		const float a = 3;
+		const float b = 2.2f;
+		return FMath::Pow(value, b) / (FMath::Pow(value, a) + FMath::Pow(b - b * value, a));
+	};
+
+	const float xValue = x / (float)size * 2.0f - 1;
+	const float yValue = y / (float)size * 2.0f - 1;
+
+	return evaluate(FMath::Max(FMath::Abs(xValue), FMath::Abs(yValue)));
+}
 
 /////////////////////////////////////////////////////
 					/* Texture */
