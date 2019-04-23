@@ -20,7 +20,7 @@ class FRunnableThread;
 class PROCEDURALLANDMASS_API FTerrainGeneratorWorker : public FRunnable
 {	
 public:
-	FTerrainGeneratorWorker();
+	FTerrainGeneratorWorker(const FTerrainConfiguration& configuration, UObject* outer);
 	~FTerrainGeneratorWorker();
 
 	/* Job queue for this worker. */
@@ -31,7 +31,7 @@ public:
 
 	/* Does the actual work of this thread. This function is static,
 	 * so it can be called manually if we are not using multi-threading. */
-	static void DoWork(FMeshDataJob& currentJob);
+	void DoWork(FMeshDataJob& currentJob);
 
 	FORCEINLINE void Pause() { bPause = true; }
 	FORCEINLINE void UnPause()
@@ -39,6 +39,8 @@ public:
 		bPause = false;
 		Semaphore->Trigger();
 	}
+
+	void UpdateConfiguration(const FTerrainConfiguration& newConfig);
 
 private:
 	FThreadSafeBool bPause = false;
@@ -51,6 +53,8 @@ private:
 
 	/* The thread we are running on. */
 	FRunnableThread* Thread;
+
+	FTerrainConfiguration Configuration;
 
 	static int32 ThreadCounter;
 	static int32 GetNewThreadNumber() { return ThreadCounter++; };

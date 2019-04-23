@@ -60,6 +60,12 @@ public:
 	static void ReplaceTextureData(UTexture2D* texture, const TArray<FLinearColor>& newData, int32 mipToUpdate = 0);
 	static void ReplaceTextureData(UTexture2D* texture, const void* newData, int32 mipToUpdate = 0);
 
+	UFUNCTION(BlueprintCallable, Category = "Unity Library|Texture")
+	static UTexture2D* TextureFromColorMap(const TArray<FLinearColor>& colorMap);
+
+	UFUNCTION(BlueprintCallable, Category = "Unity Library|Texture")
+	UTexture2D* TextureFromHeightMap(const TArray<float>& heightMap);
+	UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
 
 	/////////////////////////////////////////////////////
 					/* Multi-threading */

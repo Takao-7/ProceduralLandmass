@@ -77,9 +77,6 @@ public:
 	/* Queue for finished jobs */
 	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
 
-	/* The number of unfinished mesh data jobs. */
-	FThreadSafeCounter NumUnfinishedMeshDataJobs;
-
 	/* Event when all mesh data jobs are completed. */
 	FOnMeshDataQueueFinished MeshDataQueueFinishedDelegate;
 
@@ -103,12 +100,6 @@ protected:
 					/* Functions */
 	/////////////////////////////////////////////////////
 protected:
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawTexture(UTexture2D* texture, float targetScale);
-	
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale);
-
 	/* Generates the entire terrain. Clears the current terrain chunks if existing. */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void GenerateTerrain();
@@ -119,13 +110,6 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void ClearTerrain();
-
-	void CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, int32 numVertices, bool bUpdateMeshSection = false, UNoiseGeneratorInterface* noiseGenerator = nullptr, const FVector2D& noiseOffset = FVector2D::ZeroVector);
-
-	static FArray2D GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance = 0.5f, bool bOptimiseNormalization = false, const FVector2D& offset = FVector2D::ZeroVector, int32 seed = 42);
-
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawMap(FArray2D &noiseMap, TArray<FLinearColor> colorMap);
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -151,16 +135,10 @@ public:
 	{
 		return Configuration.MapScale * Configuration.GetChunkSize() * Configuration.NumChunks;
 	};
-
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	static UTexture2D* TextureFromColorMap(const TArray<FLinearColor>& colorMap);
-
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	static UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
-	
+		
 	void HandleFinishedMeshDataJobs();
 
-	void UpdateAllChunks(int32 levelOfDetail = 0);
+	void UpdateAllChunks();
 
 	/**
 	 * Calculates the noise offset for the given x and y position in the chunk grid.

@@ -68,8 +68,3 @@ void UEndlessTerrain::TickComponent(float DeltaTime, enum ELevelTick TickType, F
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	UpdateVisibleChunks();
 }
-
-AActor* UEndlessTerrain::GetViewActor() const
-{
-	return Viewer ? Viewer : GetWorld()->GetFirstPlayerController();
-}

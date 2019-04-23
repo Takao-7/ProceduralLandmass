@@ -10,6 +10,8 @@ class UNoiseGeneratorInterface : public UObject
 	GENERATED_BODY()
 
 public:
+	virtual void CopySettings(const UNoiseGeneratorInterface* other) {};
+
 	UFUNCTION(BlueprintCallable, BlueprintImplementableEvent, Category = "Noise Generator Interface", meta = (DisplayName = "GetNoise 1D"))
 	float GetNoise1D_K2(float x);
 	

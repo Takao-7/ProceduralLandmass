@@ -14,18 +14,14 @@ float UUnityLibrary::PerlinNoise(float x, float y)
 	return PerlinNoise(FVector2D(x, y));
 }
 
-static FCriticalSection MainSemaphore;
-static FCriticalSection SemaphoreG2;
-static FCriticalSection SemaphoreP;
-
 float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 {
 	const int32 B = 256;
 	const int32 N = 4096;
-	static int32 p[B + B + 2];
-	static float g[B + B + 2];
 	const int32 BM = 255;
 
+	static int32 p[B + B + 2];
+	static float g[B + B + 2];
 	static float g1[B + B + 2];
 	static TArray<FVector2D> g2;
 	static TArray<FVector> g3;
@@ -55,10 +51,6 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 		bIsFirstCall = false;
 
 		FRandomStream rand(5);
-
-		MainSemaphore.Lock();
-		SemaphoreG2.Lock();
-		SemaphoreP.Lock();
 
 		g2.SetNum(B + B + 2);
 		g3.SetNum(B + B + 2);
@@ -103,10 +95,6 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 				g3[B + i][j] = g3[i][j];
 			}
 		}
-
-		MainSemaphore.Unlock();
-		SemaphoreG2.Unlock();
-		SemaphoreP.Unlock();
 	}
 
 	int32 bx0, bx1, by0, by1, b00, b10, b01, b11;
@@ -117,7 +105,6 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	setup(0, bx0, bx1, rx0, rx1, t);
 	setup(1, by0, by1, ry0, ry1, t);
 
-	SemaphoreP.Lock();
 	i = p[bx0];
 	j = p[bx1];
 
@@ -125,12 +112,10 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	b10 = p[j + by0];
 	b01 = p[i + by1];
 	b11 = p[j + by1];
-	SemaphoreP.Unlock();
 
 	sx = sCurve(rx0);
 	sy = sCurve(ry0);
 
-	SemaphoreG2.Lock();
 	q = g2[b00]; u = at2(rx0, ry0, q);
 	q = g2[b10]; v = at2(rx1, ry0, q);
 	a = FMath::Lerp(u, v, sx);
@@ -138,7 +123,6 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	q = g2[b01]; u = at2(rx0, ry1, q);
 	q = g2[b11]; v = at2(rx1, ry1, q);
 	b = FMath::Lerp(u, v, sx);
-	SemaphoreG2.Unlock();
 
 	return FMath::Lerp(a, b, sy);
 }
@@ -199,6 +183,55 @@ void UUnityLibrary::ReplaceTextureData(UTexture2D* texture, const void* newData,
 	texture->UpdateResource(); /* Update the texture, so that it's ready to be used. */
 }
 
+UTexture2D* UUnityLibrary::TextureFromColorMap(const TArray<FLinearColor>& colorMap)
+{
+	const int32 size = FMath::Sqrt(colorMap.Num());
+
+	UTexture2D* texture = UTexture2D::CreateTransient(size, size, EPixelFormat::PF_A32B32G32R32F); /* Create a texture with a 32 bit pixel format for the Linear Color. */
+	texture->Filter = TextureFilter::TF_Nearest;
+	texture->AddressX = TextureAddress::TA_Clamp;
+	texture->AddressY = TextureAddress::TA_Clamp;
+
+	UUnityLibrary::ReplaceTextureData(texture, colorMap, 0);
+
+	return texture;
+}
+
+UTexture2D* UUnityLibrary::TextureFromHeightMap(const FArray2D& heightMap)
+{
+	const int32 size = heightMap.GetHeight();
+	TArray<FLinearColor> colorMap; colorMap.SetNum(size * size);
+
+	for (int32 y = 0; y < size; y++)
+	{
+		for (int32 x = 0; x < size; x++)
+		{
+			FLinearColor color = FLinearColor::LerpUsingHSV(FLinearColor::Black, FLinearColor::White, heightMap.GetValue(x, y));
+			colorMap[y * size + x] = color;
+		}
+	}
+
+	return TextureFromColorMap(colorMap);
+}
+
+UTexture2D* UUnityLibrary::TextureFromHeightMap(const TArray<float>& heightMap)
+{
+	const int32 size = heightMap.Num();
+	TArray<FLinearColor> colorMap; colorMap.SetNum(size);
+	
+	int32 i = 0;
+	for (int32 y = 0; y < size; y++)
+	{
+		for (int32 x = 0; x < size; x++)
+		{
+			FLinearColor color = FLinearColor::LerpUsingHSV(FLinearColor::Black, FLinearColor::White, heightMap[i]);
+			colorMap[y * size + x] = color;
+			++i;
+		}
+	}
+
+	return TextureFromColorMap(colorMap);
+}
 
 /////////////////////////////////////////////////////
 				/* Multi-Threading */

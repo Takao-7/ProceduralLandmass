@@ -76,6 +76,12 @@ void UTerrainChunk::UpdateChunk()
 	UpdateChunk(UTerrainChunk::CameraLocation);
 }
 
+int32 UTerrainChunk::GetOptimalLOD(FVector cameraLocation)
+{
+	const float distanceToCamera = FMath::Sqrt(Box.ComputeSquaredDistanceToPoint(cameraLocation));
+	return FLODInfo::FindLOD(*DetailLevels, distanceToCamera);
+}
+
 void UTerrainChunk::SetNewLOD(int32 newLOD)
 {
 	if (newLOD == CurrentLOD || LODMeshes[newLOD] == nullptr)

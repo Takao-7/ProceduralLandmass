@@ -26,7 +26,6 @@ ATerrainGenerator::ATerrainGenerator()
 	bRunConstructionScriptOnDrag = false;
 
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-	NumUnfinishedMeshDataJobs.Set(0);
 }
 
 ATerrainGenerator::~ATerrainGenerator()
@@ -56,30 +55,31 @@ void ATerrainGenerator::EditorTick()
 {
 	UTerrainChunk::LastCameraLocation = UTerrainChunk::CameraLocation;
 	UTerrainChunk::CameraLocation = GetCameraLocation();
-	//float distanceMoved = FVector::Dist(UTerrainChunk::LastCameraLocation, UTerrainChunk::CameraLocation);
+	
+	const float distanceMoved = FVector::Dist(UTerrainChunk::LastCameraLocation, UTerrainChunk::CameraLocation);
 
-	//if (!FMath::IsNearlyZero(distanceMoved, 1.0f))
-	//{
-	//	/* Update chunk LOD */
-	//	for (const TPair<FVector2D, UTerrainChunk*>& pair : Chunks)
-	//	{
-	//		UTerrainChunk* chunk = pair.Value;
-	//		if (IsValid(chunk))
-	//		{
-	//			chunk->UpdateChunk();
-	//		}
-	//	}
-	//}
+	if (!FMath::IsNearlyZero(distanceMoved, 1.0f))
+	{
+		/* Update chunk LOD */
+		for (const TPair<FVector2D, UTerrainChunk*>& pair : Chunks)
+		{
+			UTerrainChunk* chunk = pair.Value;
+			if (IsValid(chunk))
+			{
+				chunk->UpdateChunk();
+			}
+		}
+	}
 
 	/* Update chunk LOD */
-	for (const TPair<FVector2D, UTerrainChunk*>& pair : Chunks)
+	/*for (const TPair<FVector2D, UTerrainChunk*>& pair : Chunks)
 	{
 		UTerrainChunk* chunk = pair.Value;
 		if (IsValid(chunk))
 		{
 			chunk->UpdateChunk();
 		}
-	}
+	}*/
 		
 	HandleFinishedMeshDataJobs();
 }
@@ -110,7 +110,6 @@ void ATerrainGenerator::ClearTerrain()
 {
 	ClearTimers();
 	ClearThreads();
-	NumUnfinishedMeshDataJobs.Set(0);
 
 	/* Clear all chunks. */
 	for (auto& chunk : Chunks)
@@ -136,17 +135,11 @@ void ATerrainGenerator::GenerateTerrain()
 	const int32 chunksPerDirection = Configuration.NumChunks;	
 	const int32 chunkSize = Configuration.GetChunkSize();
 	
-	/*if (Configuration.bUseFalloffMap && Configuration.FalloffMap == nullptr)
-	{
-		const int32 falloffMapSize = Configuration.bFalloffMapPerChunk ? chunkSize : chunkSize * chunksPerDirection;
-		Configuration.FalloffMap = UUnityLibrary::GenerateFalloffMap(falloffMapSize);
-	}*/
-	
 	/* Create worker threads. */	
 	WorkerThreads.SetNum(numThreads);
 	for (int32 i = 0; i < numThreads; i++)
 	{
-		WorkerThreads[i] = new FTerrainGeneratorWorker();
+		WorkerThreads[i] = new FTerrainGeneratorWorker(Configuration, this);
 	}	
 	
 	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
@@ -155,7 +148,6 @@ void ATerrainGenerator::GenerateTerrain()
 	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / 2.0f;
 
 	/* Create mesh data jobs and add them to the worker threads. */
-	UNoiseGeneratorInterface* noiseGenerator = Configuration.NoiseGenerator;
 	const FVector cameraLocation = GetCameraLocation();
 	int32 i = 0;
 	for (int32 y = 0; y < chunksPerDirection; ++y)
@@ -178,12 +170,8 @@ void ATerrainGenerator::GenerateTerrain()
 			newChunk->SetChunkBoundingBox();
 			Chunks.Add(FVector2D(chunkPosition), newChunk);
 			
-			/* Chunk location is in world space. */
-			const FVector chunkLocation = GetTransform().TransformPosition(chunkPosition);
-			const float distanceToChunk = FVector::Dist(chunkLocation, cameraLocation) - Configuration.GetChunkSize() * 50.0f;
-			const int32 levelOfDetail = FLODInfo::FindLOD(Configuration.LODs, distanceToChunk);
-			
-			CreateAndEnqueueMeshDataJob(newChunk, levelOfDetail, chunkSize + 1, false, noiseGenerator, noiseOffset);
+			const int32 levelOfDetail = newChunk->GetOptimalLOD(cameraLocation);			
+			CreateAndEnqueueMeshDataJob(newChunk, levelOfDetail, false, noiseOffset);
 			newChunk->Status = EChunkStatus::MESH_DATA_REQUESTED;
 			++i;
 		}
@@ -212,38 +200,15 @@ void ATerrainGenerator::UpdateMap()
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, int32 numVertices, bool bUpdateMeshSection /*= false*/, 
-	UNoiseGeneratorInterface* noiseGenerator /*= nullptr*/, const FVector2D& noiseOffset /*= FVector2D::ZeroVector*/)
+void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection /*= false*/, const FVector2D& noiseOffset /*= FVector2D::ZeroVector*/)
 {
-	FMeshDataJob newJob = FMeshDataJob(noiseGenerator, chunk, Configuration.Amplitude, levelOfDetail, numVertices, bUpdateMeshSection, noiseOffset, 
-		Configuration.HeightCurve, Configuration.bUseFalloffMap);
-	NumUnfinishedMeshDataJobs.Increment();
-	
-	const int32 numThreads = Configuration.GetNumberOfThreads();
-	if (numThreads == 0)
-	{
-		FTerrainGeneratorWorker::DoWork(newJob);
-	}
-	else
-	{
-		if(noiseGenerator)
-		{
-			/* When in multi-threading mode, we have to create one noise generator object per thread,
-			* because they are not thread-safe. */
-			newJob.NoiseGenerator = DuplicateObject<UNoiseGeneratorInterface>(noiseGenerator, nullptr);
-		}
+	FMeshDataJob newJob = FMeshDataJob(chunk, &FinishedMeshDataJobs, levelOfDetail, bUpdateMeshSection, noiseOffset);
 
-		static int32 i = 0;
-		FTerrainGeneratorWorker* worker = WorkerThreads[i % numThreads];
-		levelOfDetail == 0 ? worker->PriorityJobs.Enqueue(newJob) : worker->PendingJobs.Enqueue(newJob);
-		worker->UnPause();
-		++i;
-	}
-}
-
-void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection /*= false*/, const FVector2D& offset /*= FVector2D::ZeroVector*/)
-{
-	CreateAndEnqueueMeshDataJob(chunk, levelOfDetail, Configuration.GetNumVertices(), bUpdateMeshSection, Configuration.NoiseGenerator, offset);
+	static int32 i = 0;
+	FTerrainGeneratorWorker* worker = WorkerThreads[i % Configuration.GetNumberOfThreads()];
+	levelOfDetail == 0 ? worker->PriorityJobs.Enqueue(newJob) : worker->PendingJobs.Enqueue(newJob);
+	worker->UnPause();
+	++i;
 }
 
 /////////////////////////////////////////////////////
@@ -265,36 +230,28 @@ void ATerrainGenerator::HandleFinishedMeshDataJobs()
 			chunk->CreateMeshSection(lod, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, false);
 			chunk->LODMeshes[lod] = meshData;
 			chunk->HeightMap = job.GeneratedHeightMap;
-
-			/*if (lod == 0)
-			{
-				for (int32 i = 0; i < meshData->Vertices.Num(); i+=4)
-				{
-					FVector position = meshData->Vertices[i];
-					position = chunk->GetComponentTransform().TransformPosition(position);
-					UKismetSystemLibrary::DrawDebugArrow(this, position, position + meshData->Normals[i] * 100.0f, 10.0f, FLinearColor::Red, 100.0f, 5.0f);
-				}
-			}*/
 		}
 
+		chunk->SetMaterial(lod, MeshMaterial);
 		chunk->SetNewLOD(lod);
 		chunk->Status = EChunkStatus::IDLE;
-
-		if (IsValid(job.NoiseGenerator))
-		{
-			delete job.NoiseGenerator;
-		}
-
-		NumUnfinishedMeshDataJobs.Decrement();
 	}
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::UpdateAllChunks(int32 levelOfDetail /*= 0*/)
+void ATerrainGenerator::UpdateAllChunks()
 {
+	for (FTerrainGeneratorWorker* worker : WorkerThreads)
+	{
+		if (worker)
+		{
+			worker->UpdateConfiguration(Configuration);
+		}
+	}
+	
 	const int32 chunksPerDirection = Configuration.NumChunks;
 	const int32 chunkSize = Configuration.GetChunkSize();
-	UNoiseGeneratorInterface* noiseGenerator = Configuration.NoiseGenerator;
+	const FVector cameraLocation = GetCameraLocation();
 
 	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
 	 * measured from their centers. */
@@ -316,7 +273,16 @@ void ATerrainGenerator::UpdateAllChunks(int32 levelOfDetail /*= 0*/)
 
 			UTerrainChunk* chunk = *chunkPointer;
 			const FVector2D offset = CalculateNoiseOffset(x, y);
-			CreateAndEnqueueMeshDataJob(chunk, levelOfDetail, Configuration.GetNumVertices(), true, noiseGenerator, offset);
+			
+			/* Update all LOD meshes. */
+			for (int32 lod = 0; lod < chunk->LODMeshes.Num(); ++lod)
+			{
+				const FMeshData* data = chunk->LODMeshes[lod];
+				if (data)
+				{
+					CreateAndEnqueueMeshDataJob(chunk, lod, true, offset);
+				}
+			}
 			++i;
 		}
 	}
@@ -360,86 +326,4 @@ FVector ATerrainGenerator::GetCameraLocation()
 	}
 
 	return cameraLocation;
-}
-
-/////////////////////////////////////////////////////
-void ATerrainGenerator::DrawMap(FArray2D& noiseMap, TArray<FLinearColor> colorMap)
-{
-	switch (DrawMode)
-	{
-	case EDrawMode::NoiseMap:
-		DrawTexture(TextureFromHeightMap(noiseMap), Configuration.MapScale);
-		break;
-	case EDrawMode::ColorMap:
-		DrawTexture(TextureFromColorMap(colorMap), Configuration.MapScale);
-		break;
-	case EDrawMode::Mesh:
-	{
-		/*SetPlaneVisibility(false);
-		FMeshData meshData = FMeshData::GenerateMeshData(noiseMap, MeshHeightMultiplier, EditorPreviewLevelOfDetail, 0, FVector::ZeroVector, MeshHeightCurve);
-		UTexture2D* texture = TextureFromColorMap(colorMap);
-		DrawMesh(meshData, texture, MeshMaterial, MeshComponent, MapScale);*/
-		break;
-	}
-	}
-
-	noiseMap.~FArray2D();
-}
-
-/////////////////////////////////////////////////////
-void ATerrainGenerator::DrawTexture(UTexture2D* texture, float targetScale)
-{
-	/*PreviewPlane->SetMaterial(0, MeshMaterial);
-	UMaterialInstanceDynamic* material = PreviewPlane->CreateDynamicMaterialInstance(0);
-	if(material)
-	{
-		material->SetTextureParameterValue("Texture", texture);
-
-		const float textureSize = texture->GetSizeX();
-		const float scaleFactor = textureSize / 100.0f;
-		PreviewPlane->SetRelativeScale3D(FVector(scaleFactor * targetScale));
-
-		SetPlaneVisibility(true);
-	}*/
-}
-
-void ATerrainGenerator::DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale)
-{
-	//meshData.CreateMesh(mesh);
-	//UMaterialInstanceDynamic* materialInstance = mesh->CreateAndSetMaterialInstanceDynamicFromMaterial(0, material);
-	//materialInstance->SetTextureParameterValue("Texture", texture);
-	//
-	//mesh->SetRelativeScale3D(FVector(targetScale));
-}
-
-/////////////////////////////////////////////////////
-UTexture2D* ATerrainGenerator::TextureFromColorMap(const TArray<FLinearColor>& colorMap)
-{
-	const int32 size = FMath::Sqrt(colorMap.Num());
-
-	UTexture2D* texture = UTexture2D::CreateTransient(size, size, EPixelFormat::PF_A32B32G32R32F); /* Create a texture with a 32 bit pixel format for the Linear Color. */
-	texture->Filter = TextureFilter::TF_Nearest;
-	texture->AddressX = TextureAddress::TA_Clamp;
-	texture->AddressY = TextureAddress::TA_Clamp;
-	
-	UUnityLibrary::ReplaceTextureData(texture, colorMap, 0);
-
-	return texture;
-}
-
-UTexture2D* ATerrainGenerator::TextureFromHeightMap(const FArray2D& heightMap)
-{
-	const int32 size = heightMap.GetHeight();
-
-	TArray<FLinearColor> colorMap; colorMap.SetNum(size * size);
-	for (int32 y = 0; y < size; y++)
-	{
-		for (int32 x = 0; x < size; x++)
-		{
-			FLinearColor color = FLinearColor::LerpUsingHSV(FLinearColor::Black, FLinearColor::White, heightMap.GetValue(x, y));
-			colorMap[y * size + x] = color;
-		}
-	}
-
-	return TextureFromColorMap(colorMap);
 }

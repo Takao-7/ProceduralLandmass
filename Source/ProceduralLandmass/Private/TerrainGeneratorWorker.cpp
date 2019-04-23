@@ -10,20 +10,21 @@
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
 //////////////////////////////////////////////////////
-FTerrainGeneratorWorker::FTerrainGeneratorWorker()
+FTerrainGeneratorWorker::FTerrainGeneratorWorker(const FTerrainConfiguration& configuration, UObject* outer)
 {
+	Configuration = FTerrainConfiguration(configuration, outer);
+
 	Semaphore = FGenericPlatformProcess::GetSynchEventFromPool(false);
 
 	bWorkFinished = false;
 
 	const FString threadName = TEXT("Terrain Generator Worker Thread #") + FString::FromInt(GetNewThreadNumber());
-	Thread = FRunnableThread::Create(this, *threadName);
+	Thread = FRunnableThread::Create(this, *threadName);	
 }
 
 FTerrainGeneratorWorker::~FTerrainGeneratorWorker()
 {
 	delete Thread;
-	Thread = nullptr;
 	ClearJobQueue();
 }
 
@@ -56,7 +57,7 @@ void FTerrainGeneratorWorker::Stop()
 //////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 {
-	UTerrainChunk* chunk = currentJob.Chunk;
+	const UTerrainChunk* chunk = currentJob.Chunk;
 	const int32 levelOfDetail = currentJob.LevelOfDetail;
 	const bool bUpdateSection = currentJob.bUpdateMeshSection;
 	if (bUpdateSection && chunk->LODMeshes[levelOfDetail] == nullptr)
@@ -65,28 +66,24 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 		return;
 	}
 
-	const int32 size = currentJob.NumVertices;
+	const int32 numVertices = Configuration.GetNumVertices();
 	const int32 offsetX = currentJob.Offset.X;
 	const int32 offsetY = currentJob.Offset.Y;
 
 	/* Generate height map */
-	FArray2D* heightMap = bUpdateSection ? chunk->HeightMap : new FArray2D(size, size);
-	UNoiseGeneratorInterface* noiseGenerator = currentJob.NoiseGenerator;
+	FArray2D* heightMap = bUpdateSection ? chunk->HeightMap : new FArray2D(numVertices, numVertices);
+	UNoiseGeneratorInterface* noiseGenerator = Configuration.NoiseGenerator;
 	if (IsValid(noiseGenerator))
 	{
-		const bool bUseFalloffPerChunk = currentJob.MyGenerator->Configuration.bFalloffMapPerChunk;
-		const int32 falloffMapSize = bUseFalloffPerChunk ? currentJob.NumVertices : currentJob.NumVertices * currentJob.MyGenerator->Configuration.NumChunks;
+		const bool bUseFalloffPerChunk = Configuration.bFalloffMapPerChunk;
+		const int32 falloffMapSize = bUseFalloffPerChunk ? numVertices : numVertices * Configuration.NumChunks;
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
 		{
-			if (IsValid(noiseGenerator))
-			{
-				float fallOff = 0;
-				if (currentJob.bUseFalloffMap)
-				{
-					fallOff = UUnityLibrary::GetValueWithFalloff(xIndex + offsetX, yIndex + offsetY, falloffMapSize);
-				}
+			value = noiseGenerator->GetNoise2D(xIndex + offsetX, yIndex + offsetY);
 
-				value = noiseGenerator->GetNoise2D(xIndex + offsetX, yIndex + offsetY) - fallOff;
+			if (Configuration.bUseFalloffMap)
+			{
+				value -= UUnityLibrary::GetValueWithFalloff(xIndex + offsetX, yIndex + offsetY, falloffMapSize);
 				value = FMath::Clamp(value, 0.0f, 1.0f);
 			}
 		});
@@ -97,15 +94,20 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	if (bUpdateSection)
 	{
 		currentJob.GeneratedMeshData = chunk->LODMeshes[levelOfDetail];
-		currentJob.GeneratedMeshData->UpdateMeshData(*heightMap, currentJob.HeightMultiplier, currentJob.HeightCurve);
+		currentJob.GeneratedMeshData->UpdateMeshData(*heightMap, Configuration.Amplitude, Configuration.HeightCurve);
 	}
 	else
 	{
-		const float mapScale = currentJob.MyGenerator->Configuration.MapScale;
-		currentJob.GeneratedMeshData = new FMeshData(*heightMap, currentJob.HeightMultiplier, levelOfDetail, currentJob.HeightCurve, mapScale);
+		currentJob.GeneratedMeshData = new FMeshData(*heightMap, Configuration.Amplitude, levelOfDetail, Configuration.HeightCurve, Configuration.MapScale);
 	}
 
-	currentJob.MyGenerator->FinishedMeshDataJobs.Enqueue(currentJob);
+	currentJob.DropOffQueue->Enqueue(currentJob);
+}
+
+//////////////////////////////////////////////////////
+void FTerrainGeneratorWorker::UpdateConfiguration(const FTerrainConfiguration& newConfig)
+{
+	Configuration.CopyConfiguration(newConfig);
 }
 
 //////////////////////////////////////////////////////

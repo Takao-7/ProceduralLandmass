@@ -75,4 +75,6 @@ public:
 
 	void UpdateChunk(FVector cameraLocation);
 	void UpdateChunk();
+
+	int32 GetOptimalLOD(FVector cameraLocation);
 };

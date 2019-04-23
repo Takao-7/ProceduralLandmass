@@ -32,14 +32,13 @@ struct FTerrainConfiguration
 
 public:
 	/* The number of threads we will use to generate the terrain.
-	 * Settings this to 0 will use one thread per chunk to generate
-	 * and a value of -1 will not use any threading. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = -1))
-	int32 NumberOfThreads = 4;
+	 * Settings this to 0 will use one thread per chunk to generate */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
+	int32 NumberOfThreads = 7;
 
 	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UNoiseGeneratorInterface* NoiseGenerator;
+	UNoiseGeneratorInterface* NoiseGenerator = nullptr;
 
 	/* Number of vertices per direction per chunk. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -65,8 +64,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool bFalloffMapPerChunk = false;
 
-	FArray2D* FalloffMap = nullptr;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	ECollisonMode Collision = ECollisonMode::NoCollision;
 
@@ -74,22 +71,69 @@ public:
 	UCurveFloat* HeightCurve = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TArray<FLODInfo> LODs;
+	TArray<FLODInfo> LODs = TArray<FLODInfo>();
 
-	bool operator==(const FTerrainConfiguration& otherConfig) const
+	///////////////////////////////////////////////////////
+	FTerrainConfiguration() {}
+	FTerrainConfiguration(const FTerrainConfiguration& reference, UObject* outer)
+	{
+		CopyConfiguration(reference);
+		
+		if (reference.NoiseGenerator)
+		{
+			NoiseGenerator = DuplicateObject<UNoiseGeneratorInterface>(reference.NoiseGenerator, outer);
+			NoiseGenerator->CopySettings(reference.NoiseGenerator);
+		}
+
+		if (reference.HeightCurve)
+		{
+			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, outer);
+		}
+	}
+
+	~FTerrainConfiguration()
+	{
+		if (HeightCurve)
+		{
+			delete HeightCurve;
+		}
+
+		if (NoiseGenerator)
+		{
+			delete NoiseGenerator;
+		}
+	}
+
+	///////////////////////////////////////////////////////
+	bool operator==(const FTerrainConfiguration& other) const
 	{
 		return
 		(
-			NumberOfThreads == otherConfig.NumberOfThreads &&
-			NoiseGenerator == otherConfig.NoiseGenerator &&
-			NumVertices == otherConfig.NumVertices &&
-			MapScale == otherConfig.MapScale &&
-			NumChunks == otherConfig.NumChunks &&
-			Amplitude == otherConfig.Amplitude &&
-			HeightCurve == otherConfig.HeightCurve
+			NumberOfThreads == other.NumberOfThreads &&
+			NoiseGenerator == other.NoiseGenerator &&
+			NumVertices == other.NumVertices &&
+			MapScale == other.MapScale &&
+			NumChunks == other.NumChunks &&
+			Amplitude == other.Amplitude &&
+			HeightCurve == other.HeightCurve
 		);
 	}
 
+	///////////////////////////////////////////////////////
+	void CopyConfiguration(const FTerrainConfiguration& reference)
+	{
+		NumberOfThreads = reference.NumberOfThreads;
+		NumVertices = reference.NumVertices;
+		MapScale = reference.MapScale;
+		NumChunks = reference.NumChunks;
+		Amplitude = reference.Amplitude;
+		bUseFalloffMap = reference.bUseFalloffMap;
+		bFalloffMapPerChunk = reference.bFalloffMapPerChunk;
+		Collision = reference.Collision;
+		LODs = LODs;
+	}
+
+	///////////////////////////////////////////////////////
 	void InitLODs()
 	{
 		LODs.Empty();
@@ -102,10 +146,11 @@ public:
 		LODs.Add(newLOD);
 
 		int32 i = 1;
-		while (LODs.Num() <= 6)
+		while (LODs.Num() <= 15 && i < GetChunkSize() / 2 && LODs.Last().LOD <= 15)
 		{
 			if (GetChunkSize() % (2 * i) != 0)
 			{
+				++i;
 				continue;
 			}
 
@@ -114,20 +159,9 @@ public:
 			LODs.Add(newLOD);
 			++i;
 		}
-
-		/*for (int32 i = 1; i <= GetNumVertices(); ++i)
-		{
-			if (GetChunkSize() % (2 * i) != 0)
-			{
-				continue;
-			}
-
-			newLOD.LOD = i;
-			newLOD.VisibleDistanceThreshold = 5000.0f * (i + 1);
-			LODs.Add(newLOD);
-		}*/
 	}
 
+	///////////////////////////////////////////////////////
 	/**
 	 * Returns the actual number of threads. When @see NumberOfThreads was set to 0, then we will use one thread
 	 * per chunk so the actual number of threads can be 2x the number of chunks per line.

@@ -12,10 +12,10 @@ public:
 	FLODInfo(int32 lod, float distance) : LOD(lod), VisibleDistanceThreshold(distance) {}
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0, ClampMax = 8))
-	int32 LOD;
+	int32 LOD = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0.0f))
-	float VisibleDistanceThreshold;
+	float VisibleDistanceThreshold = 1000.0f;
 
 	/* Finds the optimal level of detail for the given distance. */
 	static int32 FindLOD(const TArray<FLODInfo>& lods, float distance)
