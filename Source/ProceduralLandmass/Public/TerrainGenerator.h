@@ -61,6 +61,9 @@ protected:
 	bool bVisualizeNormals = false;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
+	bool bShowBorderVertices = false;
+	
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	EDrawMode DrawMode;
 
 	/* While in the editor override the LOD with this value for EVERY chunk. A value of -1 means no override. */

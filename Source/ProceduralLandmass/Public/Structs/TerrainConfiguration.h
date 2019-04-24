@@ -90,20 +90,7 @@ public:
 			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, outer);
 		}
 	}
-
-	~FTerrainConfiguration()
-	{
-		if (HeightCurve)
-		{
-			delete HeightCurve;
-		}
-
-		if (NoiseGenerator)
-		{
-			delete NoiseGenerator;
-		}
-	}
-
+	
 	///////////////////////////////////////////////////////
 	bool operator==(const FTerrainConfiguration& other) const
 	{

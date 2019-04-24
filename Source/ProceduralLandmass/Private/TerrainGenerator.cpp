@@ -232,6 +232,15 @@ void ATerrainGenerator::HandleFinishedMeshDataJobs()
 			chunk->HeightMap = job.GeneratedHeightMap;
 		}
 
+		if(bShowBorderVertices)
+		{
+			for (const FVector& borderVertex : meshData->BorderVertices)
+			{
+				const FVector location = GetTransform().TransformPosition(borderVertex);
+				UKismetSystemLibrary::DrawDebugPoint(this, location, 5.0f, FLinearColor::Red, 30.0f);
+			}
+		}
+
 		chunk->SetMaterial(lod, MeshMaterial);
 		chunk->SetNewLOD(lod);
 		chunk->Status = EChunkStatus::IDLE;
@@ -296,8 +305,8 @@ FVector2D ATerrainGenerator::CalculateNoiseOffset(int32 x, int32 y)
 
 	/* The top positions. Used for noise generation. */
 	const int32 totalHeight = chunkSize * chunksPerDirection;
-	const float topLeftPositionX = totalHeight - 1 / -2.0f;
-	const float topLeftPositionY = totalHeight - 1 / 2.0f;
+	const float topLeftPositionX = totalHeight/* - 1*/ / -2.0f;
+	const float topLeftPositionY = totalHeight /*- 1*/ / 2.0f;
 
 	return FVector2D(topLeftPositionX + x * chunkSize, topLeftPositionY + y * chunkSize);
 }
