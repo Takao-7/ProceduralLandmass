@@ -9,6 +9,7 @@
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
+
 //////////////////////////////////////////////////////
 FTerrainGeneratorWorker::FTerrainGeneratorWorker(const FTerrainConfiguration& configuration, UObject* outer)
 {
