@@ -24,11 +24,10 @@ UTerrainChunk::~UTerrainChunk()
 	HeightMap = nullptr;
 }
 
-void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, FVector2D noiseOffset /*= FVector2D::ZeroVector*/)
+void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray)
 {
 	DetailLevels = lodInfoArray;
 	TerrainGenerator = parentTerrainGenerator;
-	NoiseOffset = noiseOffset;
 
 	const int32 maxLOD = DetailLevels->Last().LOD;
 	LODMeshes.SetNum(maxLOD + 1);
@@ -64,7 +63,8 @@ void UTerrainChunk::UpdateChunk(FVector cameraLocation)
 	if (LODMeshes[newLOD] == nullptr && RequestedMeshData[newLOD] == false)
 	{
 		RequestedMeshData[newLOD] = true;
-		TerrainGenerator->CreateAndEnqueueMeshDataJob(this, newLOD, false, NoiseOffset);
+		const FVector2D relativePosition = FVector2D(GetRelativeTransform().GetLocation());
+		TerrainGenerator->CreateAndEnqueueMeshDataJob(this, newLOD, false, relativePosition);
 		return;
 	}
 

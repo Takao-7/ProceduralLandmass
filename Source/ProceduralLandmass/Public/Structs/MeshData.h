@@ -39,12 +39,11 @@ public:
 	TArray<FColor> VertexColors;
 	TArray<FProcMeshTangent> Tangents;
 
-	TArray<FVector> BorderVertices;
+	TArray<int32> VerticesIndexMap;
 
-	/* Array for border triangle indices.
-	 * A negative index means that the vertex is NOT 
-	 * a border vertex and therefore found in the Vertices array 
-	 * with (index + 1) * -1. */
+	/* Border vertices are counted from -1 downwards. 
+	 * Beginning at the top left. */
+	TArray<FVector> BorderVertices;
 	TArray<int32> BorderTriangles;
 
 	/* The level of detail this mesh data represents. */
@@ -64,23 +63,35 @@ public:
 	 * @param borderHeightMap If provided, these height values form a ring around the height map, containing the height values for the vertices that would be at a 
 	 * distance of LOD * 2.
 	 */
-	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const TArray<float>* borderHeightMap, const UCurveFloat* heightCurve = nullptr, float mapScale = 100.0f)
+	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const TArray<float>& borderHeightMap, const UCurveFloat* heightCurve = nullptr, float mapScale = 100.0f)
 		: LOD(levelOfDetail), MapScale(mapScale)
 	{
 		int32 triangleIndex = 0;
-		auto AddTriangle = [](int32 a, int32 b, int32 c, TArray<int32>& triangles, int32& index) -> void
+		int32 borderTriangleIndex = 0;
+		auto AddTriangle = [&](int32 a, int32 b, int32 c) -> void
 		{
-			triangles[index] = a;
-			triangles[index + 1] = b;
-			triangles[index + 2] = c;
-
-			index += 3;
+			if (a >= 0 && b >= 0 && c >= 0)
+			{
+				Triangles[triangleIndex] = a;
+				Triangles[triangleIndex + 1] = b;
+				Triangles[triangleIndex + 2] = c;
+				triangleIndex += 3;
+			}
+			else
+			{
+				BorderTriangles[borderTriangleIndex] = a;
+				BorderTriangles[borderTriangleIndex + 1] = b;
+				BorderTriangles[borderTriangleIndex + 2] = c;
+				borderTriangleIndex += 3;
+			}
 		};
 
 		const int32 meshSize = heightMap.GetWidth();
 		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
 		const int32 verticesPerLine = (meshSize - 1) / meshSimplificationIncrement + 1;
+		const int32 borderedSize = verticesPerLine + 2;
 		const int32 numVertices = FMath::Pow(verticesPerLine, 2);
+		const int32 numBorderVertices = (verticesPerLine * 4 + 4);
 
 		Vertices.SetNum(numVertices);
 		Normals.SetNum(numVertices);
@@ -88,217 +99,79 @@ public:
 		Triangles.SetNum((verticesPerLine - 1) * (verticesPerLine - 1) * 6);
 		UVs.SetNum(numVertices);
 		VertexColors.SetNum(numVertices);
-
-		const int32 numBorderVertices = (verticesPerLine * 4 + 4);
+		VerticesIndexMap.SetNum(borderedSize * borderedSize);
 		BorderVertices.SetNum(numBorderVertices);
-		BorderTriangles.SetNum(((verticesPerLine - 1) * 4 + 6) * 3);
+		BorderTriangles.SetNum(24 * borderedSize);
+		
+		int32 meshVertexIndex = 0;
+		int32 borderVertexIndex = -1;
+		for (int32 y = 0; y < borderedSize; ++y)
+		{
+			for (int32 x = 0; x < borderedSize; x++)
+			{
+				const bool bIsBorderVertex = y == 0 || y == borderedSize - 1 || x == 0 || x == borderedSize - 1;
+				if (bIsBorderVertex)
+				{
+					VerticesIndexMap[x + y * borderedSize] = borderVertexIndex;
+					borderVertexIndex--;
+				}
+				else
+				{
+					VerticesIndexMap[x + y * borderedSize] = meshVertexIndex;
+					meshVertexIndex++;
+				}
+			}
+		}
 
-		int32 vertexIndex = 0;
-		for (int32 y = 0; y < meshSize; y += meshSimplificationIncrement)
+		for (int32 y = 0; y < borderedSize; ++y)
 		{
 			#if PROFILE_CPU
 			SCOPE_CYCLE_COUNTER(STAT_GenerateTriangles);
 			#endif // PROFILE_CPU
 
-			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
+			for (int32 x = 0; x < borderedSize; ++x)
 			{
-				SetVertexAndUV(x, y, vertexIndex, heightMap, heightMultiplier, heightCurve);
+				const int32 vertexIndex = VerticesIndexMap[x + y * borderedSize];
+				SetVertexAndUV(x, y, vertexIndex, heightMap, heightMultiplier, borderHeightMap, heightCurve);
 
-				/* We need to initialize the normals array, because all normal vectors has to be exactly 0,
-				 * when we start to calculate them. */
-				Normals[vertexIndex] = FVector::ZeroVector;	
-
-				if (x < meshSize - 1 && y < meshSize - 1)
+				if (vertexIndex >= 0)
 				{
-					const int32 a = vertexIndex;
-					const int32 b = vertexIndex + 1;
-					const int32 c = vertexIndex + verticesPerLine;
-					const int32 d = vertexIndex + verticesPerLine + 1;
-					AddTriangle(a, d, c, Triangles, triangleIndex);
-					AddTriangle(d, a, b, Triangles, triangleIndex);
+					/* We need to initialize the normals array, because all normal vectors has to be exactly 0,
+					 * when we start to calculate them. */
+					Normals[vertexIndex] = FVector::ZeroVector;
 				}
 
-				++vertexIndex;
-			}
-		}
-
-		const int32 totalMeshSize = heightMap.GetWidth() + 2 * meshSimplificationIncrement;
-
-		auto setBorderVertex = [&](int32 x, int32 y, int32 index) -> void
-		{
-			const float topLeftX = (totalMeshSize - 1) / -2.0f;
-			const float topLeftY = (totalMeshSize - 1) / 2.0f;
-
-			const float height = (*borderHeightMap)[index];
-			const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
-			const float totalHeight = height * heightMultiplier * curveValue;
-			BorderVertices[index] = FVector((topLeftX + x), (topLeftY - y), totalHeight);
-		};
-
-		vertexIndex = 0;
-
-		/* Top row */
-		for (int32 x = 0; x < meshSize + (meshSimplificationIncrement * 2); x += meshSimplificationIncrement)
-		{
-			setBorderVertex(x, 0, vertexIndex);
-			++vertexIndex;
-		}
-
-		/* Sides */
-		for (int32 y = meshSimplificationIncrement; y < meshSize; y += meshSimplificationIncrement)
-		{
-			setBorderVertex(0, y, vertexIndex);
-			setBorderVertex(totalMeshSize, y, vertexIndex + 1);
-			vertexIndex += 2;
-		}
-
-		/* Bottom row*/
-		for (int32 x = 0; x < meshSize + meshSimplificationIncrement * 2; x += meshSimplificationIncrement)
-		{
-			setBorderVertex(x, totalMeshSize, vertexIndex);
-			++vertexIndex;
-		}
-
-		/* Calculate triangles */
-		int32 borderTriangleIndex = 0;
-		const int32 borderWidth = verticesPerLine + 2;
-		/* Top left */
-		{
-			const int32 a = 0;
-			const int32 b = 1;
-			const int32 c = verticesPerLine;
-			const int32 d = -1;
-
-			AddTriangle(a, d, c, BorderTriangles, borderTriangleIndex);
-			AddTriangle(d, a, b, BorderTriangles, borderTriangleIndex);
-		}
-		/* Top row */
-		for (int32 x = 0; x < verticesPerLine - 1; x++)
-		{
-			const int32 a = x;
-			const int32 b = x + 1;
-			const int32 c = (x * -1) - 1;
-			const int32 d = (x * -1) - 2;
-
-			AddTriangle(a, d, c, BorderTriangles, borderTriangleIndex);
-			AddTriangle(d, a, b, BorderTriangles, borderTriangleIndex);
-		}
-		/* Top right */
-		{
-			const int32 a = borderWidth - 2;
-			const int32 b = borderWidth - 1;
-			const int32 c = verticesPerLine * -1;
-			const int32 d = borderWidth + 1;
-
-			AddTriangle(a, d, c, BorderTriangles, borderTriangleIndex);
-		}
-		/* Sides */
-		for (int32 y = 0; y < verticesPerLine - 2; y++)
-		{
-			/* Left side */
-			int32 a = borderWidth + (y * 2);
-			int32 b = ((y * verticesPerLine) - 1) * -1;
-			int32 c = borderWidth + ((y + 1) * 2);
-			int32 d = (((y + 1) * verticesPerLine) - 1) * -1;
-
-			AddTriangle(a, d, c, BorderTriangles, borderTriangleIndex);
-			AddTriangle(d, a, b, BorderTriangles, borderTriangleIndex);
-
-			/* Right side */
-			a = verticesPerLine - 1 + (y * verticesPerLine); a = (a - 1) * -1;
-			b = borderWidth + 1 + y * 2;
-			c = (verticesPerLine * 2) - 1 + y * verticesPerLine; c = (c - 1) * -1;
-			d = borderWidth + 3 + y * 2;
-
-			AddTriangle(a, d, c, BorderTriangles, borderTriangleIndex);
-			AddTriangle(d, a, b, BorderTriangles, borderTriangleIndex);
-		}
-		/* Bottom left */
-		{
-			const int32 a = borderWidth + (verticesPerLine - 1) * 2;
-			const int32 b = Vertices.Num() - verticesPerLine;
-			const int32 d = a + 3;
-
-			AddTriangle(a, b, d, BorderTriangles, borderTriangleIndex);
-		}
-		/* Bottom row */
-		for (int32 x = 0; x < verticesPerLine - 1; x++)
-		{
-			int32 a = (Vertices.Num() - verticesPerLine) + x; a = (a - 1) * -1;
-			int32 b = a - 1;
-			const int32 c = x + borderWidth - 1 + (borderWidth - 1) * 2;
-			const int32 d = c + 1;
-
-			AddTriangle(a, d, c, BorderTriangles, borderTriangleIndex);
-			AddTriangle(d, a, b, BorderTriangles, borderTriangleIndex);
-		}
-		/* Bottom right */
-		{
-			const int32 a = (Vertices.Num() - 2) * -1;
-			const int32 b = BorderVertices.Num() - 1 - borderWidth;
-			const int32 c = BorderVertices.Num() - 2;
-			const int32 d = BorderVertices.Num() - 1;
-
-			AddTriangle(a, d, c, BorderTriangles, borderTriangleIndex);
-			AddTriangle(d, a, b, BorderTriangles, borderTriangleIndex);
-		}
-
-		/* Calculate border normals */
-		{
-			auto GetVertex = [&](int32 index) -> FVector
-			{
-				if (index < 0)
+				if (x < borderedSize - 1 && y < borderedSize - 1)
 				{
-					return Vertices[(index + 1) * -1];
-				}
-				else
-				{
-					return BorderVertices[index];
-				}
-			};
-
-			const int32 triangleCount = BorderTriangles.Num() / 3;
-			for (int32 i = 0; i < triangleCount; i++)
-			{
-				const int32 normalTriangleIndex = i * 3;
-				int32 vertexIndexA = BorderTriangles[normalTriangleIndex];
-				int32 vertexIndexB = BorderTriangles[normalTriangleIndex + 1];
-				int32 vertexIndexC = BorderTriangles[normalTriangleIndex + 2];
-
-				/* Calculate triangle normal */
-				const FVector pointA = GetVertex(vertexIndexA);
-				const FVector pointB = GetVertex(vertexIndexB);
-				const FVector pointC = GetVertex(vertexIndexC);
-
-				const FVector sideAC = pointA - pointC;
-				const FVector sideAB = pointA - pointB;
-
-				FVector triangleNormal = FVector::CrossProduct(sideAC, sideAB);
-				triangleNormal.Normalize();
-
-				if (vertexIndexA < 0)
-				{
-					vertexIndexA = (vertexIndexA + 1) * -1;
-					Normals[vertexIndexA] += triangleNormal;
-				}
-				if (vertexIndexB < 0)
-				{
-					vertexIndexB = (vertexIndexB + 1) * -1;
-					Normals[vertexIndexB] += triangleNormal;
-				}
-				if (vertexIndexC < 0)
-				{
-					vertexIndexC = (vertexIndexC + 1) * -1;
-					Normals[vertexIndexC] += triangleNormal;
+					const int32 a = VerticesIndexMap[x + y * borderedSize];
+					const int32 b = VerticesIndexMap[(x + 1) + (y * borderedSize)];
+					const int32 c = VerticesIndexMap[x + ((y + 1) * borderedSize)];
+					const int32 d = VerticesIndexMap[(x + 1) + ((y + 1) * borderedSize)];
+					AddTriangle(a, c, d);
+					AddTriangle(a, d, b);
 				}
 			}
 		}
-
+		
 		/* Calculate normals. */
 		{
 			#if PROFILE_CPU
 			SCOPE_CYCLE_COUNTER(STAT_GenerateNormals);
 			#endif // PROFILE_CPU
+
+			auto NormalFromVertices = [&](int32 indexA, int32 indexB, int32 indexC) -> FVector
+			{
+				const FVector pointA = indexA >= 0 ? Vertices[indexA] : BorderVertices[-indexA - 1];
+				const FVector pointB = indexB >= 0 ? Vertices[indexB] : BorderVertices[-indexB - 1];
+				const FVector pointC = indexC >= 0 ? Vertices[indexC] : BorderVertices[-indexC - 1];
+
+				const FVector sideAC = pointC - pointA;
+				const FVector sideAB = pointB - pointA;
+
+				FVector triangleNormal = FVector::CrossProduct(sideAC, sideAB);
+				triangleNormal.Normalize();
+				return triangleNormal;
+			};
 
 			const int32 triangleCount = Triangles.Num() / 3;
 			for (int32 i = 0; i < triangleCount; i++)
@@ -308,22 +181,39 @@ public:
 				const int32 vertexIndexB = Triangles[normalTriangleIndex + 1];
 				const int32 vertexIndexC = Triangles[normalTriangleIndex + 2];
 
-				/* Calculate triangle normal */
-				const FVector pointA = Vertices[vertexIndexA];
-				const FVector pointB = Vertices[vertexIndexB];
-				const FVector pointC = Vertices[vertexIndexC];
-
-				const FVector sideAC = pointA - pointC;
-				const FVector sideAB = pointA - pointB;
-
-				FVector triangleNormal = FVector::CrossProduct(sideAC, sideAB);
-				triangleNormal.Normalize();
+				FVector triangleNormal = NormalFromVertices(vertexIndexA, vertexIndexB, vertexIndexC);
 
 				// We add the normals together, because a vertex normal is the average
 				// normal across it's connected faces.
 				Normals[vertexIndexA] += triangleNormal;
 				Normals[vertexIndexB] += triangleNormal;
 				Normals[vertexIndexC] += triangleNormal;
+			}
+
+			const int32 borderTrianglesCount = BorderTriangles.Num() / 3;
+			for (int32 i = 0; i < borderTrianglesCount; i++)
+			{
+				const int32 normalTriangleIndex = i * 3;
+				const int32 vertexIndexA = BorderTriangles[normalTriangleIndex];
+				const int32 vertexIndexB = BorderTriangles[normalTriangleIndex + 1];
+				const int32 vertexIndexC = BorderTriangles[normalTriangleIndex + 2];
+
+				FVector triangleNormal = NormalFromVertices(vertexIndexA, vertexIndexB, vertexIndexC);
+
+				// We add the normals together, because a vertex normal is the average
+				// normal across it's connected faces.
+				if (vertexIndexA >= 0)
+				{
+					Normals[vertexIndexA] += triangleNormal;
+				}
+				if (vertexIndexB >= 0)
+				{
+					Normals[vertexIndexB] += triangleNormal;
+				}
+				if (vertexIndexC >= 0)
+				{
+					Normals[vertexIndexC] += triangleNormal;
+				}
 			}
 
 			for (int32 i = 0; i < numVertices; i++)
@@ -338,25 +228,47 @@ public:
 
 	~FMeshData() {}
 
-	void SetVertexAndUV(int32 x, int32 y, int32 vertexIndex, const FArray2D& heightMap, float heightMultiplier, const UCurveFloat* heightCurve = nullptr)
+	void SetVertexAndUV(int32 x, int32 y, int32 vertexIndex, const FArray2D& heightMap, float heightMultiplier, const TArray<float>& borderHeightMap, const UCurveFloat* heightCurve = nullptr)
 	{
 		const int32 meshSize = heightMap.GetWidth();
 		const float topLeftX = (meshSize - 1) / -2.0f;
-		const float topLeftY = (meshSize - 1) / 2.0f;
+		const float topLeftY = (meshSize - 1) / -2.0f;
 
-		const float height = heightMap[x + y * meshSize];
+		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
+		const int32 xPos = (x - 1) * meshSimplificationIncrement;
+		const int32 yPos = (y - 1) * meshSimplificationIncrement;
+
+		float height = 0;
+		if (vertexIndex >= 0)
+		{
+			height = heightMap.GetValue(xPos, yPos);
+		}
+		else
+		{
+			height = borderHeightMap[-vertexIndex - 1];
+		}
+
 		const float curveValue = heightCurve ? heightCurve->GetFloatValue(height) : 1.0f;
 		const float totalHeight = height * heightMultiplier * curveValue;
 		
-		Vertices[vertexIndex] = FVector((topLeftX + x), (topLeftY - y), totalHeight);
-		UVs[vertexIndex] = (FVector2D(topLeftX + x, topLeftY - y) * MapScale) / (float)meshSize;
+		const FVector vertexPosition = FVector((topLeftX + xPos), (topLeftY + yPos), totalHeight);
 
-		/* Safe the height map to the red vertex color channel. */
-		float mappedHeight = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height * curveValue);
-		VertexColors[vertexIndex] = FColor(FMath::RoundToInt(mappedHeight), 0, 0);
+		if(vertexIndex >= 0)
+		{
+			Vertices[vertexIndex] = vertexPosition;
+			UVs[vertexIndex] = (FVector2D(topLeftX + xPos, topLeftY + yPos) * MapScale) / (float)(meshSize);
+
+			/* Safe the height map to the red vertex color channel. */
+			float mappedHeight = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 1.0f), FVector2D(0.0f, 255.0f), height * curveValue);
+			VertexColors[vertexIndex] = FColor(FMath::RoundToInt(mappedHeight), 0, 0);
+		}
+		else
+		{
+			BorderVertices[-vertexIndex-1] = vertexPosition;
+		}
 	}
 
-	void UpdateMeshData(const FArray2D& heightMap, float heightMultiplier, const UCurveFloat* heightCurve = nullptr)
+	void UpdateMeshData(const FArray2D& heightMap, float heightMultiplier, const TArray<float>& borderHeightMap, const UCurveFloat* heightCurve = nullptr)
 	{
 		#if PROFILE_CPU
 		SCOPE_CYCLE_COUNTER(STAT_UpdateMeshData);
@@ -370,7 +282,7 @@ public:
 		{
 			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
 			{
-				SetVertexAndUV(x, y, vertexIndex, heightMap, heightMultiplier, heightCurve);
+				SetVertexAndUV(x, y, vertexIndex, heightMap, heightMultiplier, borderHeightMap, heightCurve);
 				++vertexIndex;
 			}
 		}

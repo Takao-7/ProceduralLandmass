@@ -87,14 +87,14 @@ void ATerrainGenerator::EditorTick()
 /////////////////////////////////////////////////////
 void ATerrainGenerator::ClearThreads()
 {
-	for (FTerrainGeneratorWorker* worker : WorkerThreads)
+	for (int32 i = 0; i < WorkerThreads.Num(); i++)
 	{
-		if (worker)
+		if (WorkerThreads[i])
 		{
-			worker->Stop();
+			WorkerThreads[i]->Stop();
+			WorkerThreads[i] = nullptr;
 		}
 	}
-	WorkerThreads.Empty(0);
 }
 
 void ATerrainGenerator::ClearTimers()
@@ -145,7 +145,7 @@ void ATerrainGenerator::GenerateTerrain()
 	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
 	 * measured from their centers. */
 	const float topLeftChunkPositionX = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
-	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / 2.0f;
+	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
 
 	/* Create mesh data jobs and add them to the worker threads. */
 	const FVector cameraLocation = GetCameraLocation();
@@ -154,18 +154,18 @@ void ATerrainGenerator::GenerateTerrain()
 	{
 		for (int32 x = 0; x < chunksPerDirection; ++x)
 		{
-			const FVector2D noiseOffset = CalculateNoiseOffset(x, y);
+			/* Chunk position is relative to the whole terrain actor. */
+			const FVector chunkPosition = FVector(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY + (y * chunkSize), 0.0f);
+			const FVector2D noiseOffset = FVector2D(chunkPosition);
 
 			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
 			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
-			newChunk->InitChunk(this, &Configuration.LODs, noiseOffset);
+			newChunk->InitChunk(this, &Configuration.LODs);
 			newChunk->bEnableAutoLODGeneration = true;
 			newChunk->bUseAsyncCooking = true;
 			newChunk->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			newChunk->SetCollisionResponseToAllChannels(ECR_Block);
 			
-			/* Chunk position is relative to the whole terrain actor. */
-			const FVector chunkPosition = FVector(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize), 0.0f);
 			newChunk->SetRelativeLocation(chunkPosition);
 			newChunk->SetChunkBoundingBox();
 			Chunks.Add(FVector2D(chunkPosition), newChunk);
@@ -232,12 +232,44 @@ void ATerrainGenerator::HandleFinishedMeshDataJobs()
 			chunk->HeightMap = job.GeneratedHeightMap;
 		}
 
+		static FLinearColor color = FLinearColor::Red;
 		if(bShowBorderVertices)
 		{
 			for (const FVector& borderVertex : meshData->BorderVertices)
 			{
-				const FVector location = GetTransform().TransformPosition(borderVertex);
-				UKismetSystemLibrary::DrawDebugPoint(this, location, 5.0f, FLinearColor::Red, 30.0f);
+				const FVector location = chunk->GetComponentTransform().TransformPosition(borderVertex);
+				UKismetSystemLibrary::DrawDebugPoint(this, location, 5.0f, color, 30.0f);
+			}
+
+			if (color == FLinearColor::Red)
+			{
+				color = FLinearColor::Green;
+			}
+			else
+			{
+				color = FLinearColor::Red;
+			}
+		}
+
+		if (bVisualizeNormals)
+		{
+			const TArray<FVector>& vertices = meshData->Vertices;
+			const TArray<FVector>& normals = meshData->Normals;
+			for (int32 i = 0; i < vertices.Num(); i++)
+			{
+				const FVector location = chunk->GetComponentTransform().TransformPosition(vertices[i]);
+				const FVector endLocation = location + (normals[i] * 100.0f);
+
+				UKismetSystemLibrary::DrawDebugArrow(this, location, endLocation, 10.0f, color, 30.0f, 5.0f);
+			}
+
+			if (color == FLinearColor::Red)
+			{
+				color = FLinearColor::Green;
+			}
+			else
+			{
+				color = FLinearColor::Red;
 			}
 		}
 
@@ -305,10 +337,10 @@ FVector2D ATerrainGenerator::CalculateNoiseOffset(int32 x, int32 y)
 
 	/* The top positions. Used for noise generation. */
 	const int32 totalHeight = chunkSize * chunksPerDirection;
-	const float topLeftPositionX = totalHeight/* - 1*/ / -2.0f;
-	const float topLeftPositionY = totalHeight /*- 1*/ / 2.0f;
+	const float topLeftPositionX = totalHeight / -2.0f;
+	const float topLeftPositionY = totalHeight / 2.0f;
 
-	return FVector2D(topLeftPositionX + x * chunkSize, topLeftPositionY + y * chunkSize);
+	return FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY - (y * chunkSize));
 }
 
 /////////////////////////////////////////////////////

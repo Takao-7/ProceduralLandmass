@@ -49,9 +49,6 @@ public:
 	/* The player's camera location in the last frame. */
 	static FVector LastCameraLocation;
 
-	/* This chunks noise offset. */
-	FVector2D NoiseOffset;
-
 private:
 	int32 CurrentLOD = 0;
 
@@ -69,7 +66,7 @@ public:
 	~UTerrainChunk();
 
 	void SetNewLOD(int32 newLOD);
-	void InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray, FVector2D noiseOffset = FVector2D::ZeroVector);
+	void InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<FLODInfo>* lodInfoArray);
 
 	void SetChunkBoundingBox();
 

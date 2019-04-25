@@ -66,12 +66,13 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 		return;
 	}
 
+	const int32 chunkSize = Configuration.GetChunkSize();
 	const int32 numVertices = Configuration.GetNumVertices();
-	const int32 offsetX = currentJob.Offset.X;
-	const int32 offsetY = currentJob.Offset.Y;
+	const int32 topLeftX = currentJob.Offset.X - (chunkSize / 2.0f);
+	const int32 topLeftY = currentJob.Offset.Y - (chunkSize / 2.0f);
 
 	/* Generate a height map if we need one or update it. */
-	FArray2D* heightMap = bUpdateSection || chunk->HeightMap ? chunk->HeightMap : new FArray2D(numVertices, numVertices);
+ 	FArray2D* heightMap = bUpdateSection || chunk->HeightMap ? chunk->HeightMap : new FArray2D(numVertices, numVertices);
 	UNoiseGeneratorInterface* noiseGenerator = Configuration.NoiseGenerator;
 	if (IsValid(noiseGenerator) && (bUpdateSection || chunk->HeightMap == nullptr))
 	{
@@ -79,11 +80,11 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 		const int32 falloffMapSize = bUseFalloffPerChunk ? numVertices : numVertices * Configuration.NumChunks;
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
 		{
-			value = noiseGenerator->GetNoise2D(xIndex + offsetX, yIndex + offsetY);
+			value = noiseGenerator->GetNoise2D(topLeftX + xIndex, topLeftY + yIndex);
 
 			if (Configuration.bUseFalloffMap)
 			{
-				value -= UUnityLibrary::GetValueWithFalloff(xIndex + offsetX, yIndex + offsetY, falloffMapSize);
+				value -= UUnityLibrary::GetValueWithFalloff(topLeftX + xIndex, topLeftY + yIndex, falloffMapSize);
 				value = FMath::Clamp(value, 0.0f, 1.0f);
 			}
 		});
@@ -93,32 +94,36 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	const int32 meshSimplificationIncrement = levelOfDetail == 0 ? 1 : levelOfDetail * 2;
 	const int32 verticesPerLine = (numVertices - 1) / meshSimplificationIncrement + 1;
 	TArray<float> borderHeightMap; borderHeightMap.SetNum(verticesPerLine * 4 + 4);
-	if (IsValid(noiseGenerator))
+
+	/* Generate border height map */
+	if(IsValid(noiseGenerator))
 	{
+		const int32 borderTopLeftX = topLeftX - meshSimplificationIncrement;
+		const int32 borderTopLeftY = topLeftY - meshSimplificationIncrement;
 		int32 vertexIndex = 0;
-		const int32 chunkSize = Configuration.GetChunkSize();
-		const int32 borderOffsetX = offsetX - meshSimplificationIncrement;
-		const int32 borderOffsetY = offsetY + meshSimplificationIncrement;
 
 		/* Top row */
-		for (int32 x = 0; x < numVertices + meshSimplificationIncrement * 2; x += meshSimplificationIncrement)
+		for (int32 x = 0; x < numVertices + (meshSimplificationIncrement * 2); x += meshSimplificationIncrement)
 		{
-			borderHeightMap[vertexIndex] = noiseGenerator->GetNoise2D(x + borderOffsetX, borderOffsetY);
-			++vertexIndex;
+			borderHeightMap[vertexIndex] = noiseGenerator->GetNoise2D(borderTopLeftX + x, borderTopLeftY);
+			vertexIndex++;
 		}
 
 		/* Sides */
-		for (int32 y = meshSimplificationIncrement; y <= numVertices; y += meshSimplificationIncrement)
-		{	
-			borderHeightMap[vertexIndex++] = noiseGenerator->GetNoise2D(borderOffsetX, y + borderOffsetY);
-			borderHeightMap[vertexIndex++] = noiseGenerator->GetNoise2D(chunkSize + (2 * meshSimplificationIncrement) + borderOffsetX, y + borderOffsetY);
+		for (int32 y = meshSimplificationIncrement; y < numVertices + meshSimplificationIncrement; y += meshSimplificationIncrement)
+		{
+			borderHeightMap[vertexIndex] = noiseGenerator->GetNoise2D(borderTopLeftX, borderTopLeftY + y);
+			vertexIndex++;
+
+			borderHeightMap[vertexIndex] = noiseGenerator->GetNoise2D(borderTopLeftX + (2 * meshSimplificationIncrement) + chunkSize, borderTopLeftY + y);
+			vertexIndex++;
 		}
 
 		/* Bottom row*/
-		for (int32 x = 0; x < numVertices + meshSimplificationIncrement * 2; x += meshSimplificationIncrement)
+		for (int32 x = 0; x < numVertices + (meshSimplificationIncrement * 2); x += meshSimplificationIncrement)
 		{
-			borderHeightMap[vertexIndex] = noiseGenerator->GetNoise2D(x + borderOffsetX, borderOffsetY + chunkSize + (2 * meshSimplificationIncrement));
-			++vertexIndex;
+			borderHeightMap[vertexIndex] = noiseGenerator->GetNoise2D(borderTopLeftX + x, borderTopLeftY + (chunkSize + (2 * meshSimplificationIncrement)));
+			vertexIndex++;
 		}
 	}
 
@@ -126,11 +131,11 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	if (bUpdateSection)
 	{
 		currentJob.GeneratedMeshData = chunk->LODMeshes[levelOfDetail];
-		currentJob.GeneratedMeshData->UpdateMeshData(*heightMap, Configuration.Amplitude, Configuration.HeightCurve);
+		currentJob.GeneratedMeshData->UpdateMeshData(*heightMap, Configuration.Amplitude, borderHeightMap,Configuration.HeightCurve);
 	}
 	else
 	{
-		currentJob.GeneratedMeshData = new FMeshData(*heightMap, Configuration.Amplitude, levelOfDetail, &borderHeightMap, Configuration.HeightCurve, Configuration.MapScale);
+		currentJob.GeneratedMeshData = new FMeshData(*heightMap, Configuration.Amplitude, levelOfDetail, borderHeightMap, Configuration.HeightCurve, Configuration.MapScale);
 	}
 
 	currentJob.DropOffQueue->Enqueue(currentJob);

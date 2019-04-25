@@ -125,7 +125,7 @@ public:
 	{
 		LODs.Empty();
 
-		const float distance = 10000.0f;
+		const float distance = 7500.0f;
 
 		FLODInfo newLOD;
 		newLOD.LOD = 0;
