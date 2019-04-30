@@ -7,291 +7,311 @@
 #include "Engine/Texture2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Kismet/KismetMathLibrary.h"
 #include "Public/UnityLibrary.h"
+#include "PerlinNoiseGenerator.h"
+#include "TerrainGeneratorWorker.h"
+#include "TimerManager.h"
+#include "GameFramework/PlayerController.h"
+#include "Public/TerrainChunk.h"
+#include "Kismet/GameplayStatics.h"
+#include <Engine/GameInstance.h>
+#include <Engine/LocalPlayer.h>
+#include <GameFramework/Actor.h>
+#include <RunnableThread.h>
 
 
 ATerrainGenerator::ATerrainGenerator()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bRunConstructionScriptOnDrag = false;
-
-	RootComponent = Cast<USceneComponent>(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
-
-	MeshComponent = Cast<UProceduralMeshComponent>(CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("Mesh")));
-	MeshComponent->SetupAttachment(RootComponent);
-	MeshComponent->SetRelativeScale3D(FVector(100.0f));
-
-	PreviewPlane = Cast<UStaticMeshComponent>(CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Plane")));
-	PreviewPlane->SetupAttachment(RootComponent);
-	PreviewPlane->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
-	SetPlaneVisibility(false);
+	
+	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 }
-
+	
+ATerrainGenerator::~ATerrainGenerator()
+{
+	ClearTimers();
+	ClearThreads();
+}
+	
+/////////////////////////////////////////////////////
 void ATerrainGenerator::BeginPlay()
 {
 	Super::BeginPlay();
-	
-	PreviewPlane->SetMaterial(0, MeshMaterial);
-	MeshComponent->ClearAllMeshSections();	
-}
 
+	ClearThreads();
+	ClearTimers();
+}
+	
+/////////////////////////////////////////////////////
 void ATerrainGenerator::Tick(float DeltaSeconds)
 {
-	Super::Tick(DeltaSeconds);
-
-	if (!MapDataThreadInfoQueue.IsEmpty() && !CriticalSectionMapDataQueue.TryLock())
-	{
-		FMapThreadInfo<FMapData> threadInfo;
-		MapDataThreadInfoQueue.Dequeue(threadInfo);
-		threadInfo.Callback(threadInfo.Parameter);
-	}
-
-	if (!MeshDataThreadInfoQueue.IsEmpty() && !CriticalSectionMeshDataQueue.TryLock())
-	{
-		FMapThreadInfo<FMeshData> threadInfo;
-		MeshDataThreadInfoQueue.Dequeue(threadInfo);
-		threadInfo.Callback(threadInfo.Parameter);
-	}
+	Super::Tick(DeltaSeconds);	
+	UpdateChunkLOD();
+}
+	
+void ATerrainGenerator::EditorTick()
+{
+	UpdateChunkLOD();			
+	HandleFinishedMeshDataJobs();
 }
 
+void ATerrainGenerator::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (bGenerateMap)
+	{
+		bGenerateMap = false;
+		OnGenerateMapClicked();
+	}
+	else if (bClearTerrain)
+	{
+		bClearTerrain = false;
+		ClearTerrain();
+	}
+	else if (bAutoUpdate)
+	{
+		UpdateMap();
+	}
+}
+	
 /////////////////////////////////////////////////////
-void ATerrainGenerator::SetPlaneVisibility(bool bIsVisible)
+void ATerrainGenerator::UpdateChunkLOD()
 {
-	PreviewPlane->SetVisibility(bIsVisible);
-	PreviewPlane->SetHiddenInGame(!bIsVisible);
-}
+	UTerrainChunk::LastCameraLocation = UTerrainChunk::CameraLocation;
+	UTerrainChunk::CameraLocation = UUnityLibrary::GetCameraLocation(this);
 
-/////////////////////////////////////////////////////
-void ATerrainGenerator::GenerateMap(bool bCreateNewMesh /*= false*/)
-{
-	FMapData mapData = GenerateMapData(FVector2D::ZeroVector);
+	const float distanceMoved = FVector::Dist(UTerrainChunk::LastCameraLocation, UTerrainChunk::CameraLocation);
 
-	if (bCreateNewMesh)
+	if (!FMath::IsNearlyZero(distanceMoved, 1.0f))
 	{
-		MeshComponent->ClearAllMeshSections();
-	}
-
-	DrawMap(mapData.HeightMap, mapData.ColorMap);
-}
-
-FMapData ATerrainGenerator::GenerateMapData(FVector2D center)
-{
-	FArray2D noiseMap = GenerateNoiseMap(MapChunkSize, NoiseScale, Lacunarity, Octaves, Persistance, false, center + Offset, Seed);
-
-	TArray<FLinearColor> colorMap = TArray<FLinearColor>(); colorMap.SetNum(MapChunkSize * MapChunkSize);
-	if (Regions.Num() > 0)
-	{
-		/* Iterate over the noise map and based of the height value set the region color to the color map. */
-		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
+		/* Update chunk LOD */
+		for (const TPair<FVector2D, UTerrainChunk*>& pair : Chunks)
 		{
-			for (const FTerrainType& region : Regions)
+			UTerrainChunk* chunk = pair.Value;
+			if (IsValid(chunk))
 			{
-				if (height <= region.Height)
-				{
-					colorMap[y * MapChunkSize + x] = region.Color;
-					break;
-				}
+				chunk->UpdateChunk();
 			}
-		});
+		}
 	}
-	else
-	{
-		noiseMap.ForEachWithIndex([&](float& height, int32 x, int32 y)
-		{
-			colorMap[y * MapChunkSize + x] = FLinearColor(height, height, height);
-		});
-	}
-
-	return FMapData(noiseMap, colorMap, FVector(center + Offset, 0.0f) * 100.0f);
 }
 
 /////////////////////////////////////////////////////
-FArray2D ATerrainGenerator::GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance /*= 0.5f*/, bool bOptimiseNormalization /*= false*/, const FVector2D& offset /*= FVector2D::ZeroVector*/, int32 seed /*= 42*/)
+void ATerrainGenerator::ClearTerrain()
 {
-	FArray2D noiseMap = FArray2D(mapSize, mapSize);
-
-	/* Initialize a random number generator struct and seed it with the given value. */
-	FRandomStream random(seed);
-
-	TArray<FVector2D> octaveOffsets; octaveOffsets.SetNum(octaves);
-	for (FVector2D& offsetVec : octaveOffsets)
+	ClearTimers();
+	ClearThreads();
+			
+	/* Clear all chunks. */
+	for (auto& chunk : Chunks)
 	{
-		float offsetX = random.FRandRange(-1000.0f, 1000.0f) + offset.X;
-		float offsetY = random.FRandRange(-1000.0f, 1000.0f) + offset.Y;
-		offsetVec = FVector2D(offsetX, offsetY);
-	}
-
-	const float halfSize = mapSize / 2.0;
-
-	/* The actual min value in the noise map. */
-	float minValue = 1.0f / SMALL_NUMBER;
-
-	/* The actual max value in the noise map. */
-	float maxValue = SMALL_NUMBER;
-
-	/* The calculated theoretical highest value. */
-	float limit = 0.0f;
-	for (int32 i = 0; i < octaves; i++)
-	{
-		limit += FMath::Pow(persistance, i);
-	}
-
-	const auto generateNoise = [&](float& value, int32 x, int32 y)
-	{
-		float amplitude = 1.0f;
-		float frequency = 1.0f;
-		float noiseHeight = 0.0f;
-
-		for (const FVector2D& octaveOffset : octaveOffsets)
+		if (chunk.Value)
 		{
-			const float sampleX = (x - halfSize) / scale * frequency + octaveOffset.X;
-			const float sampleY = (y - halfSize) / scale * frequency + octaveOffset.Y;
-
-			const float perlinValue = UUnityLibrary::PerlinNoise(sampleX, sampleY);
-			noiseHeight += perlinValue * amplitude;
-
-			amplitude *= persistance;
-			frequency *= lacunarity;
+			chunk.Value->DestroyComponent();
 		}
-
-		if (noiseHeight > maxValue)
-		{
-			maxValue = noiseHeight;
-		}
-		else if (noiseHeight < minValue)
-		{
-			minValue = noiseHeight;
-		}
-
-		value = bOptimiseNormalization ? UKismetMathLibrary::NormalizeToRange(noiseHeight, -limit, limit) : noiseHeight;
-	};
-	noiseMap.ForEachWithIndex(generateNoise);
-
-	if (!bOptimiseNormalization)
-	{
-		const auto normalizeValue = [minValue, maxValue](float& value) { value = UKismetMathLibrary::NormalizeToRange(value, minValue, maxValue); };
-		noiseMap.ForEach(normalizeValue);
 	}
+	
+	Chunks.Empty();
+}
 
-	return noiseMap;
+void ATerrainGenerator::ClearThreads()
+{
+	for (int32 i = 0; i < WorkerThreads.Num(); i++)
+	{
+		if (WorkerThreads[i])
+		{
+			WorkerThreads[i]->Stop();
+			WorkerThreads[i] = nullptr;
+		}
+	}
+}
+	
+void ATerrainGenerator::ClearTimers()
+{
+	UWorld* world = GetWorld();
+	if (world)
+	{
+		world->GetTimerManager().ClearAllTimersForObject(this);
+	}
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::DrawMap(FArray2D& noiseMap, TArray<FLinearColor> colorMap)
+void ATerrainGenerator::OnGenerateMapClicked()
 {
 	switch (DrawMode)
 	{
 	case EDrawMode::NoiseMap:
-		MeshComponent->ClearAllMeshSections();
-		DrawTexture(TextureFromHeightMap(noiseMap), MapScale);
 		break;
 	case EDrawMode::ColorMap:
-		MeshComponent->ClearAllMeshSections();
-		DrawTexture(TextureFromColorMap(colorMap), MapScale);
 		break;
 	case EDrawMode::Mesh:
-	{
-		SetPlaneVisibility(false);
-		FMeshData meshData = FMeshData::GenerateMeshData(noiseMap, MeshHeightMultiplier, EditorPreviewLevelOfDetail, 0, FVector::ZeroVector, MeshHeightCurve);
-		UTexture2D* texture = TextureFromColorMap(colorMap);
-		DrawMesh(meshData, texture, MeshMaterial, MeshComponent, MapScale);
+		GenerateTerrain();
+		break;
+	default:
 		break;
 	}
-	}
-
-	noiseMap.~FArray2D();
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::DrawTexture(UTexture2D* texture, float targetScale)
+void ATerrainGenerator::GenerateTerrain()
 {
-	PreviewPlane->SetMaterial(0, MeshMaterial);
-	UMaterialInstanceDynamic* material = PreviewPlane->CreateDynamicMaterialInstance(0);
-	if(material)
-	{
-		material->SetTextureParameterValue("Texture", texture);
+	ClearTerrain();
+	
+	SetActorScale3D(FVector(Configuration.MapScale));
+	Configuration.InitLODs();
+	
+	const int32 numThreads = Configuration.GetNumberOfThreads();
+	const int32 chunksPerDirection = Configuration.NumChunks;	
+	const int32 chunkSize = Configuration.GetChunkSize();
 		
-		const float textureSize = texture->GetSizeX();
-		const float scaleFactor = textureSize / 100.0f;
-		PreviewPlane->SetRelativeScale3D(FVector(scaleFactor * targetScale));
-
-		SetPlaneVisibility(true);
-	}
-}
-
-void ATerrainGenerator::DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale)
-{
-	meshData.CreateMesh(mesh);
-	UMaterialInstanceDynamic* materialInstance = mesh->CreateAndSetMaterialInstanceDynamicFromMaterial(0, material);
-	materialInstance->SetTextureParameterValue("Texture", texture);
-	
-	mesh->SetRelativeScale3D(FVector(targetScale));
-}
-
-/////////////////////////////////////////////////////
-UTexture2D* ATerrainGenerator::TextureFromColorMap(const TArray<FLinearColor>& colorMap)
-{
-	const int32 size = FMath::Sqrt(colorMap.Num());
-
-	UTexture2D* texture = UTexture2D::CreateTransient(size, size, EPixelFormat::PF_A32B32G32R32F); /* Create a texture with a 32 bit pixel format for the Linear Color. */
-	texture->Filter = TextureFilter::TF_Nearest;
-	texture->AddressX = TextureAddress::TA_Clamp;
-	texture->AddressY = TextureAddress::TA_Clamp;
-	
-	UUnityLibrary::ReplaceTextureData(texture, colorMap, 0);
-
-	return texture;
-}
-
-UTexture2D* ATerrainGenerator::TextureFromHeightMap(const FArray2D& heightMap)
-{
-	const int32 size = heightMap[0].Num();
-
-	TArray<FLinearColor> colorMap; colorMap.SetNum(size * size);
-	for (int32 y = 0; y < size; y++)
+	/* Create worker threads. */	
+	WorkerThreads.SetNum(numThreads);
+	for (int32 i = 0; i < numThreads; i++)
 	{
-		for (int32 x = 0; x < size; x++)
+		WorkerThreads[i] = new FTerrainGeneratorWorker(Configuration, GetWorld());
+	}	
+		
+	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
+	 * measured from their centers. */
+	const float topLeftChunkPositionX = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
+	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
+	
+	/* Create mesh data jobs and add them to the worker threads. */
+	const FVector cameraLocation = UUnityLibrary::GetCameraLocation(this);
+	int32 i = 0;
+	for (int32 y = 0; y < chunksPerDirection; ++y)
+	{
+		for (int32 x = 0; x < chunksPerDirection; ++x)
 		{
-			FLinearColor color = FLinearColor::LerpUsingHSV(FLinearColor::Black, FLinearColor::White, heightMap[x][y]);
-			colorMap[y * size + x] = color;
+			/* Chunk position is relative to the whole terrain actor. */
+			const FVector chunkPosition = FVector(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY + (y * chunkSize), 0.0f);
+			const FVector2D noiseOffset = FVector2D(chunkPosition);
+	
+			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
+			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
+			newChunk->InitChunk(this, &Configuration.LODs);
+			newChunk->bEnableAutoLODGeneration = true;
+			newChunk->bUseAsyncCooking = true;
+			newChunk->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+			newChunk->SetCollisionResponseToAllChannels(ECR_Block);
+				
+			newChunk->SetRelativeLocation(chunkPosition);
+			newChunk->SetChunkBoundingBox();
+			Chunks.Add(FVector2D(chunkPosition), newChunk);
+				
+			const int32 levelOfDetail = newChunk->GetOptimalLOD(cameraLocation);			
+			CreateAndEnqueueMeshDataJob(newChunk, levelOfDetail, false, noiseOffset);
+			newChunk->Status = EChunkStatus::MESH_DATA_REQUESTED;
+			++i;
+		}
+	}
+		
+	OldConfiguration = Configuration;
+	GetWorld()->GetTimerManager().SetTimer(THEditorTick, this, &ATerrainGenerator::EditorTick, 1 / 60.0f, true);
+}
+	
+void ATerrainGenerator::UpdateMap()
+{
+	if (!bUpdateTerrain && Configuration == OldConfiguration)
+	{
+		return;
+	}
+		
+	if (Configuration.NumChunks != OldConfiguration.NumChunks)
+	{
+		GenerateTerrain();
+		return;
+	}
+	
+	/* Update the configurations for all worker threads. */
+	for (FTerrainGeneratorWorker* worker : WorkerThreads)
+	{
+		if (worker)
+		{
+			worker->UpdateConfiguration(Configuration);
 		}
 	}
 
-	return TextureFromColorMap(colorMap);
+	bUpdateTerrain = false;
+	bGenerateMap = false;
+
+	const int32 chunksPerDirection = Configuration.NumChunks;
+	const int32 chunkSize = Configuration.GetChunkSize();
+	const FVector cameraLocation = UUnityLibrary::GetCameraLocation(this);
+
+	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
+	 * measured from their centers. */
+	const float topLeftChunkPositionX = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
+	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / 2.0f;
+
+	int32 i = 0;
+	for (int32 y = 0; y < Configuration.NumChunks; ++y)
+	{
+		for (int32 x = 0; x < Configuration.NumChunks; ++x)
+		{
+			const FVector2D chunkPosition = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));
+			UTerrainChunk * *chunkPointer = Chunks.Find(chunkPosition);
+			if (chunkPointer == nullptr)
+			{
+				UE_LOG(LogTemp, Error, TEXT("Chunk position '%s' not viable."), *chunkPosition.ToString());
+				continue;
+			}
+
+			UTerrainChunk* chunk = *chunkPointer;
+
+			/* Update all LOD meshes. */
+			for (int32 lod = 0; lod < chunk->LODMeshes.Num(); ++lod)
+			{
+				const FTerrainMeshData* data = chunk->LODMeshes[lod];
+				if (data)
+				{
+					CreateAndEnqueueMeshDataJob(chunk, lod, true, chunkPosition);
+				}
+			}
+			++i;
+		}
+	}
+	
+	OldConfiguration = Configuration;
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::RequestMapData(FVector2D center, TFunction<void (FMapData)> callback)
+void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection /*= false*/, const FVector2D& noiseOffset /*= FVector2D::ZeroVector*/)
 {
-	UUnityLibrary::CreateTask([=]() { MapDataThread(center, callback); })->StartBackgroundTask();
+	FMeshDataJob newJob = FMeshDataJob(chunk, &FinishedMeshDataJobs, levelOfDetail, bUpdateMeshSection, noiseOffset);
+	
+	static int32 i = 0;
+	FTerrainGeneratorWorker* worker = WorkerThreads[i % Configuration.GetNumberOfThreads()];
+	levelOfDetail == 0 ? worker->PriorityJobs.Enqueue(newJob) : worker->PendingJobs.Enqueue(newJob);
+	worker->UnPause();
+	++i;
 }
-
-void ATerrainGenerator::MapDataThread(FVector2D center, TFunction<void (FMapData)> callback)
-{
-	FMapData mapData = GenerateMapData(center);
-	FMapThreadInfo<FMapData> threadInfo = FMapThreadInfo<FMapData>(callback, mapData);
-
-	{
-		FScopeLock ScopeLockMapData(&CriticalSectionMapDataQueue);
-		MapDataThreadInfoQueue.Enqueue(threadInfo);
-	}
-}
-
+	
 /////////////////////////////////////////////////////
-void ATerrainGenerator::RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
+void ATerrainGenerator::HandleFinishedMeshDataJobs()
 {
-	UUnityLibrary::CreateTask([=]() { MeshDataThread(mapData, lod, callback); })->StartBackgroundTask();
-}
-
-void ATerrainGenerator::MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback)
-{
-	FMeshData meshData = FMeshData::GenerateMeshData(mapData.HeightMap, MeshHeightMultiplier, lod, CurrentMeshSectionIndex++, mapData.Offset, MeshHeightCurve);
-	FMapThreadInfo<FMeshData> threadInfo = FMapThreadInfo<FMeshData>(callback, meshData);
-
+	FMeshDataJob job;
+	while (FinishedMeshDataJobs.Dequeue(job))
 	{
-		FScopeLock ScopeLockMeshData(&CriticalSectionMeshDataQueue);
-		MeshDataThreadInfoQueue.Enqueue(threadInfo);
+		FTerrainMeshData* meshData = job.GeneratedMeshData;
+		UTerrainChunk* chunk = job.Chunk;
+		const int32 lod = meshData->LOD;
+	
+		if (job.bUpdateMeshSection)
+		{
+			chunk->UpdateMeshSection(lod, meshData->Vertices, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents);
+		}
+		else
+		{
+			chunk->CreateMeshSection(lod, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, false);
+			chunk->LODMeshes[lod] = meshData;
+			chunk->HeightMap = job.GeneratedHeightMap;
+		}
+	
+		chunk->SetMaterial(lod, TerrainMaterial);
+		chunk->SetNewLOD(lod);
+		chunk->Status = EChunkStatus::IDLE;
 	}
 }
-

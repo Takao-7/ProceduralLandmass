@@ -4,71 +4,32 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Structs/MeshData.h"
+#include "Structs/TerrainConfiguration.h"
+#include "MeshDataJob.h"
+#include "Queue.h"
 #include "TerrainGenerator.generated.h"
 
 
+class UTerrainChunk;
 class UProceduralMeshComponent;
 class UMaterial;
 class UCurveFloat;
 class USceneComponent;
 class UTexture2D;
 class AStaticMeshActor;
-struct FMeshData;
+struct FTerrainMeshData;
 struct FLinearColor;
-
-
-USTRUCT(BlueprintType)
-struct FTerrainType
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FString Name;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	float Height;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FLinearColor Color;
-};
-
-
-USTRUCT(BlueprintType)
-struct FMapData
-{
-	GENERATED_BODY()
-
-public:
-	FArray2D HeightMap;
-	TArray<FLinearColor> ColorMap;
-	/* Offset for verticies. */
-	FVector Offset;
-
-	FMapData() {};
-	FMapData(FArray2D noiseMap, TArray<FLinearColor> colorMap, FVector offset = FVector::ZeroVector) : HeightMap(noiseMap), ColorMap(colorMap), Offset(offset) {};
-	~FMapData() {};
-};
-
-
-template<typename T>
-struct FMapThreadInfo
-{
-public:
-	TFunction<void (T)> Callback;
-	T Parameter;
-
-	FMapThreadInfo() {};
-	FMapThreadInfo(TFunction<void(T)> callback, T parameter) : Callback(callback), Parameter(parameter) {};
-	~FMapThreadInfo() {};
-};
+class FTerrainGeneratorWorker;
 
 
 UENUM(BlueprintType)
 enum class EDrawMode : uint8
 {
+	/* Only display the noise map on a flat plane. */
 	NoiseMap,
+	/* Display the texture on a flat plane. */
 	ColorMap,
+	/* Generate and display the whole mesh. */
 	Mesh
 };
 
@@ -77,135 +38,117 @@ UCLASS()
 class PROCEDURALLANDMASS_API ATerrainGenerator : public AActor
 {
 	GENERATED_BODY()
-
-
-	/////////////////////////////////////////////////////
-					/* Components */
-	/////////////////////////////////////////////////////
-protected:
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = "Map Generator")
-	UProceduralMeshComponent* MeshComponent;
-
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = "Map Generator")
-	UStaticMeshComponent* PreviewPlane;
-
-
+	
+	
 	/////////////////////////////////////////////////////
 					/* Parameters */
 	/////////////////////////////////////////////////////
 protected:
-	/* Use this as a button to manually generate the map. 
-	 * When @see bAutoUpdate is enabled, this has no effect. */
+	/** 
+	 * Use this as a button to (re-) generate the map.
+	 * This will clear the entire map and all of it's chunks. 
+	 */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	bool bGenerateMap = false;
+	
+	/**
+	 * Just update the terrain. This will not clear the entire map and is identically
+	 * if @see bAutoUpdate is set to true and a value was changed.
+	 * Use this if you have updated the float curve.
+	 */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
+	bool bUpdateTerrain = false;
 
-	/* If true we will generate the noise map each time a value changes. */
+	/**
+	 * Destroy all chunks and terrain workers. After doing this, the terrain
+	 * has the same state as when it was spawned.
+	 */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
+	bool bClearTerrain = false;
+	
+	/* If true we will generate the map each time a value changes. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	bool bAutoUpdate = true;
-
+		
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
-	EDrawMode DrawMode;
+	EDrawMode DrawMode = EDrawMode::Mesh;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0, ClampMax = 6), Category = "Map Generator|General")
-	int32 EditorPreviewLevelOfDetail = 0;
+	/* Array of all worker threads. Pointers can be null. */
+	TArray<FTerrainGeneratorWorker*> WorkerThreads;
 
-	/* The overall map scale. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|General")
-	float MapScale = 100.0f;
+	/* All chunks that belong to this terrain. */
+	TMap<FVector2D, UTerrainChunk*> Chunks;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0.001f), Category = "Map Generator|Settings")
-	float NoiseScale = 30.0f;
+	/* Timer handle for @see FinishedMeshDataJobs */
+	FTimerHandle THFinishedJobsQueue;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0), Category = "Map Generator|Settings")
-	int32 Octaves = 4;
+	/* Timer handle for @see EditorTick() */
+	FTimerHandle THEditorTick;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 0.0f, ClampMax = 1.0f), Category = "Map Generator|Settings")
-	float Persistance = 0.5f;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ClampMin = 1.0f), Category = "Map Generator|Settings")
-	float Lacunarity = 2.0f;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|Settings")
-	int32 Seed = 42;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|Settings")
-	FVector2D Offset = FVector2D::ZeroVector;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|Settings")
-	float MeshHeightMultiplier = 10.0f;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
-	TArray<FTerrainType> Regions;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
-	UMaterial* MeshMaterial;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
-	UCurveFloat* MeshHeightCurve;
-
+	/* The configuration before it changed. Used to determent which values did change. */
+	FTerrainConfiguration OldConfiguration;
+	
 public:
-	/* The map chunk size. This is the number of vertices per line, per chunk.
-	 * Change witch caution. Default is 241. */
-	static const int32 MapChunkSize = 241;
-
-private:
-	int32 CurrentMeshSectionIndex = 0;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
+	FTerrainConfiguration Configuration;
 	
-	TQueue<FMapThreadInfo<FMapData>, EQueueMode::Mpsc> MapDataThreadInfoQueue;	
-	TQueue<FMapThreadInfo<FMeshData>, EQueueMode::Mpsc> MeshDataThreadInfoQueue;
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator")
+	UMaterial* TerrainMaterial;
 	
-	FCriticalSection CriticalSectionMapDataQueue;
-	FCriticalSection CriticalSectionMeshDataQueue;
-
-
+	/* Queue for finished jobs */
+	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
+		
+	
 	/////////////////////////////////////////////////////
 					/* Functions */
 	/////////////////////////////////////////////////////
+public:
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	void CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection = false, const FVector2D& offset = FVector2D::ZeroVector);
+
+	/** Returns the actual terrain size (in cm) along one direction (= edge length).
+	 * Takes the map scale into account! */
+	UFUNCTION(BlueprintPure, Category = "Map Generator")
+	FORCEINLINE float GetTerrainSize() const
+	{
+		return Configuration.MapScale * Configuration.GetChunkSize() * Configuration.NumChunks;
+	};
+
+	ATerrainGenerator();
+	~ATerrainGenerator();
+
 protected:
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawTexture(UTexture2D* texture, float targetScale);
+	void OnGenerateMapClicked();
+
+	/* Generates the entire terrain. Clears the current terrain chunks if existing (@see ClearTerrain). */
+	UFUNCTION(BlueprintCallable, Category = "Map Generator")
+	void GenerateTerrain();
 	
+	/* Updates the terrain, if only the noise generator has changed. */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawMesh(FMeshData& meshData, UTexture2D* texture, UMaterial* material, UProceduralMeshComponent* mesh, float targetScale);
-
-	UFUNCTION(BlueprintPure, Category = "Map Generator")
-	bool ShouldGenerateMap() const { return bAutoUpdate || bGenerateMap; };
-
+	void UpdateMap();
+	
+	/* Removes all timers for this object, clears all threads and destroys all chunks. */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void GenerateMap(bool bCreateNewMesh = false);
-
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	FMapData GenerateMapData(FVector2D center);
-
-	static FArray2D GenerateNoiseMap(int32 mapSize, float scale, float lacunarity, int32 octaves, float persistance = 0.5f, bool bOptimiseNormalization = false, const FVector2D& offset = FVector2D::ZeroVector, int32 seed = 42);
-
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void DrawMap(FArray2D &noiseMap, TArray<FLinearColor> colorMap);
-
+	void ClearTerrain();
+	
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
-	
-public:	
-	// Sets default values for this actor's properties
-	ATerrainGenerator();
-
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	static UTexture2D* TextureFromColorMap(const TArray<FLinearColor>& colorMap);
-
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	static UTexture2D* TextureFromHeightMap(const FArray2D& heightMap);
-
-	UFUNCTION(BlueprintPure, Category = "Map Generator")
-	static int32 GetMapChunkSize() { return MapChunkSize; };
-
-	UProceduralMeshComponent* GetMeshComponent() const { return MeshComponent; };
-
-	void RequestMapData(FVector2D center, TFunction<void (FMapData)> callback);
-	void MapDataThread(FVector2D center, TFunction<void (FMapData)> callback);
-
-	void RequestMeshData(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
-	void MeshDataThread(FMapData mapData, int32 lod, TFunction<void(FMeshData)> callback);
+	virtual void OnConstruction(const FTransform& Transform) override;
 
 private:
-	void SetPlaneVisibility(bool bIsVisible);
+	/**
+	 * Custom "Tick" function that runs in the editor.
+	 * Updates the chunk LOD (@see UpdateChunkLOD) and handles
+	 * finished mesh data jobs (@see HandleFinishedMeshDataJobs).
+	 */ 
+	void EditorTick();
+
+	void UpdateChunkLOD();
+	
+	void ClearThreads();
+	void ClearTimers();
+	
+	void HandleFinishedMeshDataJobs();
 };

@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
 #include "Containers/List.h"
+#include "TerrainChunk.h"
 
 
 UEndlessTerrain::UEndlessTerrain()
@@ -14,7 +15,7 @@ UEndlessTerrain::UEndlessTerrain()
 
 void UEndlessTerrain::UpdateVisibleChunks()
 {
-	for (FTerrainChunk* chunk : TerrainChunksVisible)
+	/*for (UTerrainChunk* chunk : TerrainChunksVisible)
 	{
 		const bool bIsVisibleNow = chunk->UpdateTerrainChunk();
 		if (!bIsVisibleNow)
@@ -34,7 +35,7 @@ void UEndlessTerrain::UpdateVisibleChunks()
 			const FVector2D viewedChunkCoord = FVector2D(currentChunkCoordX + xOffset, currentChunkCoordY + yOffset);
 			if (TerrainChunkDictionary.Contains(viewedChunkCoord))
 			{
-				FTerrainChunk* chunk = *TerrainChunkDictionary.Find(viewedChunkCoord);
+				UTerrainChunk* chunk = *TerrainChunkDictionary.Find(viewedChunkCoord);
 				chunk->UpdateTerrainChunk();
 				if (chunk->IsVisible())
 				{
@@ -43,18 +44,20 @@ void UEndlessTerrain::UpdateVisibleChunks()
 			}
 			else
 			{
-				FTerrainChunk* newChunk = new FTerrainChunk(viewedChunkCoord, MaxViewDistance, ChunkSize, 100.0f, GetOwner(), MeshClass, TerrainGenerator, &DetailLevels, GetViewActor());
+				const FName chunkName = *FString::Printf(TEXT("Chunk %s"), *viewedChunkCoord.ToString());
+				UTerrainChunk* newChunk = NewObject<UTerrainChunk>(TerrainGenerator, chunkName);
+				newChunk->InitChunk(MaxViewDistance, TerrainGenerator, &DetailLevels, GetViewActor());
 				TerrainChunkDictionary.Add(viewedChunkCoord, newChunk);
 			}
 		}
-	}
+	}*/
 }
 
 void UEndlessTerrain::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ChunkSize = ATerrainGenerator::MapChunkSize - 1;
+	ChunkSize = 240;
 	MaxViewDistance = DetailLevels.Last().VisibleDistanceThreshold;
 	ChunksVisibleInViewDistance = FMath::RoundToInt(MaxViewDistance / (ChunkSize * 100.0f));
 	TerrainGenerator = Cast<ATerrainGenerator>(GetOwner());
@@ -64,9 +67,4 @@ void UEndlessTerrain::TickComponent(float DeltaTime, enum ELevelTick TickType, F
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	UpdateVisibleChunks();
-}
-
-AActor* UEndlessTerrain::GetViewActor() const
-{
-	return Viewer ? Viewer : GetWorld()->GetFirstPlayerController();
 }

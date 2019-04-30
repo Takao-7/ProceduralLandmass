@@ -3,10 +3,12 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Kismet/GameplayStatics.h"
-#include "Structs/TerrainChunk.h"
-#include "MeshData.h"
+#include "LODInfo.h"
 #include "EndlessTerrain.generated.h"
+
+
+class UTerrainChunk;
+class ATerrainGenerator;
 
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -33,8 +35,8 @@ private:
 	int32 ChunkSize = 240;
 	int32 ChunksVisibleInViewDistance = 1;
 
-	TMap<FVector2D, FTerrainChunk*> TerrainChunkDictionary;
-	TDoubleLinkedList<FTerrainChunk*> TerrainChunksVisible;
+	TMap<FVector2D, UTerrainChunk*> TerrainChunkDictionary;
+	TDoubleLinkedList<UTerrainChunk*> TerrainChunksVisible;
 
 public:	
 	// Sets default values for this component's properties
@@ -46,7 +48,5 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-	AActor* GetViewActor() const;
 
 };
