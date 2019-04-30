@@ -8,7 +8,7 @@
 
 class ATerrainGenerator;
 class AActor;
-struct FMeshData;
+struct FTerrainMeshData;
 class UBoxComponent;
 
 
@@ -39,7 +39,7 @@ public:
 	UPROPERTY(BlueprintReadWrite)
 	EChunkStatus Status = EChunkStatus::SPAWNED;
 
-	TArray<FMeshData*> LODMeshes;
+	TArray<FTerrainMeshData*> LODMeshes;
 	FArray2D* HeightMap;
 
 	/* The player's camera location. Used for level of detail.

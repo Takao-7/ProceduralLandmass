@@ -4,6 +4,8 @@
 #include "Engine/Texture2D.h"
 #include <ThreadSafeBool.h>
 #include "Array2D.h"
+#include <Kismet/GameplayStatics.h>
+#include <Engine/World.h>
 
 
 /////////////////////////////////////////////////////
@@ -129,7 +131,7 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 
 
 /////////////////////////////////////////////////////
-				/* Falloff Generator */
+			/* Falloff Generator */
 /////////////////////////////////////////////////////
 FArray2D* UUnityLibrary::GenerateFalloffMap(int32 size)
 {
@@ -151,7 +153,7 @@ FArray2D* UUnityLibrary::GenerateFalloffMap(int32 size)
 	return map;
 }
 
-float UUnityLibrary::GetValueWithFalloff(int32 x, int32 y, int32 size)
+float UUnityLibrary::GetFalloffValue(int32 x, int32 y, int32 size)
 {
 	const auto evaluate = [](float value)
 	{
@@ -165,6 +167,42 @@ float UUnityLibrary::GetValueWithFalloff(int32 x, int32 y, int32 size)
 
 	return evaluate(FMath::Max(FMath::Abs(xValue), FMath::Abs(yValue)));
 }
+
+float UUnityLibrary::GetValueWithFalloff(float value, int32 x, int32 y, int32 size)
+{
+	value -= GetFalloffValue(x, y, size);
+	return FMath::Clamp(value, 0.0f, 1.0f);
+}
+
+
+/////////////////////////////////////////////////////
+					/* Camera */
+/////////////////////////////////////////////////////
+FVector UUnityLibrary::GetCameraLocation(const UObject* worldContextObject)
+{
+	FVector cameraLocation = FVector::ZeroVector;
+
+	const APlayerCameraManager* cameraManager = UGameplayStatics::GetPlayerCameraManager(worldContextObject, 0);
+	if (IsValid(cameraManager))
+	{
+		cameraLocation = cameraManager->GetCameraLocation();
+	}
+	else
+	{
+		const UWorld* world = worldContextObject->GetWorld();
+		if (IsValid(world))
+		{
+			auto viewLocations = world->ViewLocationsRenderedLastFrame;
+			if (viewLocations.Num() != 0)
+			{
+				cameraLocation = viewLocations[0];
+			}
+		}
+	}
+
+	return cameraLocation;
+}
+
 
 /////////////////////////////////////////////////////
 					/* Texture */
@@ -236,14 +274,12 @@ UTexture2D* UUnityLibrary::TextureFromHeightMap(const TArray<float>& heightMap)
 /////////////////////////////////////////////////////
 				/* Multi-Threading */
 /////////////////////////////////////////////////////
-FAutoDeleteAsyncTask<UUnityLibrary::MyAsyncTask>* UUnityLibrary::CreateTask(TFunction<void(void)> workCallback, TFunction<void(void)> abandonCallback /*= nullptr*/, TFunction<bool(void)> canAbandonCallback /*= nullptr*/)
+FAutoDeleteAsyncTask<MyAsyncTask>* UUnityLibrary::CreateTask(TFunction<void(void)> workCallback, TFunction<void(void)> abandonCallback /*= nullptr*/, TFunction<bool(void)> canAbandonCallback /*= nullptr*/)
 {
-	FAutoDeleteAsyncTask<MyAsyncTask>* newTask = new FAutoDeleteAsyncTask<MyAsyncTask>(workCallback, abandonCallback, canAbandonCallback);
-	return newTask;
+	return new FAutoDeleteAsyncTask<MyAsyncTask>(workCallback, abandonCallback, canAbandonCallback);
 }
 
-FAutoDeleteAsyncTask<UUnityLibrary::MyAsyncTask>* UUnityLibrary::CreateTask(TFunction<void(void)> workCallback)
+FAutoDeleteAsyncTask<MyAsyncTask>* UUnityLibrary::CreateTask(TFunction<void(void)> workCallback)
 {
-	FAutoDeleteAsyncTask<MyAsyncTask>* newTask = new FAutoDeleteAsyncTask<MyAsyncTask>(workCallback);
-	return newTask;
+	return new FAutoDeleteAsyncTask<MyAsyncTask>(workCallback);
 }

@@ -11,7 +11,7 @@ FVector UTerrainChunk::LastCameraLocation = FVector::ZeroVector;
 
 UTerrainChunk::~UTerrainChunk()
 {
-	for (FMeshData* meshData : LODMeshes)
+	for (FTerrainMeshData* meshData : LODMeshes)
 	{
 		if (meshData)
 		{

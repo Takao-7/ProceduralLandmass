@@ -20,6 +20,11 @@ class FRunnableThread;
 class PROCEDURALLANDMASS_API FTerrainGeneratorWorker : public FRunnable
 {	
 public:
+	/**
+	 * Creates a new terrain generator worker thread and starts it.
+	 * @param configuration The terrain configuration to use. We will make a copy of it to be thread-safe.
+	 * @param outer The outer object for the terrain configuration's objects (noise generator and float curve).
+	 */
 	FTerrainGeneratorWorker(const FTerrainConfiguration& configuration, UObject* outer);
 	~FTerrainGeneratorWorker();
 

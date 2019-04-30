@@ -6,7 +6,7 @@
 
 
 class UCurveFloat;
-struct FMeshData;
+struct FTerrainMeshData;
 struct FArray2D;
 class UTerrainChunk;
 class UNoiseGeneratorInterface;
@@ -40,7 +40,7 @@ public:
 
 	/////////////////////////////////////////////////////
 	/* The generated mesh data. */
-	FMeshData* GeneratedMeshData = nullptr;
+	FTerrainMeshData* GeneratedMeshData = nullptr;
 
 	/* The generated height map. */
 	FArray2D* GeneratedHeightMap = nullptr;

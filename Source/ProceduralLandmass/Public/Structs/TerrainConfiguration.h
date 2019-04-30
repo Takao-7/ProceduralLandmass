@@ -20,6 +20,7 @@ enum class ENumVertices : uint8
 UENUM(BlueprintType)
 enum class ECollisonMode : uint8
 {
+	/* Don't generate any collision */
 	NoCollision
 };
 
@@ -49,20 +50,12 @@ public:
 	float MapScale = 100.0f;
 
 	/** Number of chunks per axis we will generate. So the entire generated terrain will consist of 2 times this many chunks. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 1))
 	int32 NumChunks = 20;
 
 	/** Multiplier for height map. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 1.0f))
 	float Amplitude = 17.5;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	bool bUseFalloffMap = false;
-
-	/* When using a falloff map, should it's size be equal to one chunk (true) or
-	 * the entire terrain (false)? */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	bool bFalloffMapPerChunk = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	ECollisonMode Collision = ECollisonMode::NoCollision;
@@ -114,8 +107,6 @@ public:
 		MapScale = reference.MapScale;
 		NumChunks = reference.NumChunks;
 		Amplitude = reference.Amplitude;
-		bUseFalloffMap = reference.bUseFalloffMap;
-		bFalloffMapPerChunk = reference.bFalloffMapPerChunk;
 		Collision = reference.Collision;
 		LODs = LODs;
 	}

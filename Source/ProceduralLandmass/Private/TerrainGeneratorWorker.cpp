@@ -25,8 +25,8 @@ FTerrainGeneratorWorker::FTerrainGeneratorWorker(const FTerrainConfiguration& co
 
 FTerrainGeneratorWorker::~FTerrainGeneratorWorker()
 {
-	delete Thread;
 	ClearJobQueue();
+	delete Thread;
 }
 
 //////////////////////////////////////////////////////
@@ -51,7 +51,6 @@ uint32 FTerrainGeneratorWorker::Run()
 
 void FTerrainGeneratorWorker::Stop()
 {
-	bPause = true;
 	bWorkFinished = true;
 }
 
@@ -77,17 +76,9 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	UNoiseGeneratorInterface* noiseGenerator = Configuration.NoiseGenerator;
 	if (IsValid(noiseGenerator) && (bUpdateSection || chunk->HeightMap == nullptr))
 	{
-		const bool bUseFalloffPerChunk = Configuration.bFalloffMapPerChunk;
-		const int32 falloffMapSize = bUseFalloffPerChunk ? numVertices : numVertices * Configuration.NumChunks;
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
 		{
 			value = noiseGenerator->GetNoise2D(topLeftX + xIndex, topLeftY + yIndex);
-
-			if (Configuration.bUseFalloffMap)
-			{
-				value -= UUnityLibrary::GetValueWithFalloff(topLeftX + xIndex, topLeftY + yIndex, falloffMapSize);
-				value = FMath::Clamp(value, 0.0f, 1.0f);
-			}
 		});
 	}
 	currentJob.GeneratedHeightMap = heightMap;
@@ -136,7 +127,7 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	}
 	else
 	{
-		currentJob.GeneratedMeshData = new FMeshData(*heightMap, Configuration.Amplitude, levelOfDetail, borderHeightMap, Configuration.HeightCurve, Configuration.MapScale);
+		currentJob.GeneratedMeshData = new FTerrainMeshData(*heightMap, Configuration.Amplitude, levelOfDetail, borderHeightMap, Configuration.HeightCurve, Configuration.MapScale);
 	}
 
 	currentJob.DropOffQueue->Enqueue(currentJob);

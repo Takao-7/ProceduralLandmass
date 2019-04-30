@@ -27,7 +27,7 @@ struct FLinearColor;
  * This struct contains the data needed to generate a mesh.
  */
 USTRUCT(BlueprintType)
-struct FMeshData
+struct FTerrainMeshData
 {
 	GENERATED_BODY()
 
@@ -39,30 +39,41 @@ public:
 	TArray<FColor> VertexColors;
 	TArray<FProcMeshTangent> Tangents;
 
+	/**
+	 * Contains the indices 
+	 */
 	TArray<int32> VerticesIndexMap;
 
-	/* Border vertices are counted from -1 downwards. 
-	 * Beginning at the top left. */
+	/**
+	 * Border vertices are counted from -1 downwards.
+	 * Beginning at the top left, moving row wise.
+	 */ 
 	TArray<FVector> BorderVertices;
+	
 	TArray<int32> BorderTriangles;
 
 	/* The level of detail this mesh data represents. */
 	int32 LOD = 0;
 
-	/* The terrain scale. Needed for setting the UV's in a way that compensates the terrain scale, so that materials
-	 * are not stretched. */
+	/**
+	 * The terrain scale. Needed for setting the UV's in a way that compensates the terrain scale, 
+	 * so that materials are not stretched.
+	 */
 	float MapScale = 100.0f;
 
 	/////////////////////////////////////////////////////
-	FMeshData() {}
+	FTerrainMeshData() {}
+	
 	/**
 	 * Creates a mesh data struct with the given data.
 	 * Safes the height map in the red vertex color channel. This version of the height map is compressed, because the vertex color is only 8 bit (Values in range 0-255).
 	 * The generated mesh data is centered, so the mesh component's central location will be at the mesh's center.
-	 * @param heightMap The height to generate the mesh from. When @see levelOfDetail is not zero, than this must be the height map at LOD 0.
-	 * @param borderHeightMap Height values for a ring around the height map that would be at a distance of LOD * 2.
+	 * @param heightMap The height to generate the mesh from. This must be the height map at LOD 0.
+	 * @param borderHeightMap Height values for a ring around the height map that would be at a distance of LOD * 2 (= mesh simplification increment), or at distance 1 in case of
+	 * LOD 0.
 	 */
-	FMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const TArray<float>& borderHeightMap, const UCurveFloat* heightCurve = nullptr, float mapScale = 100.0f)
+	FTerrainMeshData(const FArray2D& heightMap, float heightMultiplier, int32 levelOfDetail, const TArray<float>& borderHeightMap, const UCurveFloat* heightCurve = nullptr, 
+		float mapScale = 100.0f)
 		: LOD(levelOfDetail), MapScale(mapScale)
 	{
 		const int32 heightMapWidth = heightMap.GetWidth();
@@ -84,7 +95,8 @@ public:
 		
 		/* Initialize the vertices index map. The vertices index map contains the indices for all vertices (mesh and border).
 		 * This is necessary to easily get the correct vertex index based on a x and y coordinate, where 0,0 would be the top left
-		 * corner of the border and translates to the vertex index -1 for the first border vertex. */
+		 * corner of the border and translates to the vertex index -1 for the first border vertex, while the x,y coordinates 1,1 would
+		 * be the vertex index 0 for the first non-birder vertex. */
 		{ 
 			int32 meshVertexIndex = 0;
 			int32 borderVertexIndex = -1;
@@ -109,6 +121,7 @@ public:
 
 		int32 triangleIndex = 0;
 		int32 borderTriangleIndex = 0;
+
 		/* Adds a triangle to the triangle array (all indices positive) or
 		 * border triangle array (any index smaller 0). */
 		auto AddTriangle = [&](int32 a, int32 b, int32 c) -> void
@@ -165,7 +178,10 @@ public:
 			SCOPE_CYCLE_COUNTER(STAT_GenerateNormals);
 			#endif // PROFILE_CPU
 
-			/* Calculates a normal vector from three vertex indices. */
+			/**
+			 * Calculates a normal vector from three vertex indices.
+			 * When an index is less than zero, than this is a border vertex.
+			 */ 
 			auto NormalFromVertices = [&](int32 indexA, int32 indexB, int32 indexC) -> FVector
 			{
 				const FVector pointA = indexA >= 0 ? Vertices[indexA] : BorderVertices[-indexA - 1];
@@ -191,8 +207,8 @@ public:
 
 				const FVector triangleNormal = NormalFromVertices(vertexIndexA, vertexIndexB, vertexIndexC);
 
-				// We add the normals together, because a vertex normal is the average
-				// normal across it's connected faces.
+				/* We add the normals together (and normalize it later), because a vertex normal is the average
+				 * normal across it's connected faces */
 				Normals[vertexIndexA] += triangleNormal;
 				Normals[vertexIndexB] += triangleNormal;
 				Normals[vertexIndexC] += triangleNormal;
@@ -224,6 +240,7 @@ public:
 				}
 			}
 
+			/* Normalize the normals and generate mesh tangents. */
 			for (int32 i = 0; i < numVertices; i++)
 			{
 				Normals[i].Normalize();
@@ -234,9 +251,10 @@ public:
 		}
 	}
 
-	~FMeshData() {}
+	~FTerrainMeshData() {}
 
-	void SetVertexAndUV(int32 x, int32 y, int32 vertexIndex, const FArray2D& heightMap, float heightMultiplier, const TArray<float>& borderHeightMap, const UCurveFloat* heightCurve = nullptr)
+	void SetVertexAndUV(int32 x, int32 y, int32 vertexIndex, const FArray2D& heightMap, float heightMultiplier, const TArray<float>& borderHeightMap, 
+		const UCurveFloat* heightCurve = nullptr)
 	{
 		const int32 meshSize = heightMap.GetWidth();
 		const float topLeftX = (meshSize - 1) / -2.0f;
@@ -281,16 +299,17 @@ public:
 		SCOPE_CYCLE_COUNTER(STAT_UpdateMeshData);
 		#endif // PROFILE_CPU
 
-		const int32 meshSize = heightMap.GetWidth();
+		const int32 heightMapWidth = heightMap.GetWidth();
 		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;
+		const int32 verticesPerLine = (heightMapWidth - 1) / meshSimplificationIncrement + 1;
+		const int32 borderVerticesPerLine = verticesPerLine + 2;
 
-		int32 vertexIndex = 0;
-		for (int32 y = 0; y < meshSize; y += meshSimplificationIncrement)
+		for (int32 y = 0; y < borderVerticesPerLine; ++y)
 		{
-			for (int32 x = 0; x < meshSize; x += meshSimplificationIncrement)
+			for (int32 x = 0; x < borderVerticesPerLine; ++x)
 			{
+				const int32 vertexIndex = VerticesIndexMap[x + y * borderVerticesPerLine];
 				SetVertexAndUV(x, y, vertexIndex, heightMap, heightMultiplier, borderHeightMap, heightCurve);
-				++vertexIndex;
 			}
 		}
 	}

@@ -24,38 +24,64 @@ ATerrainGenerator::ATerrainGenerator()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bRunConstructionScriptOnDrag = false;
-
+	
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 }
-
+	
 ATerrainGenerator::~ATerrainGenerator()
 {
 	ClearTimers();
 	ClearThreads();
 }
-
+	
 /////////////////////////////////////////////////////
 void ATerrainGenerator::BeginPlay()
 {
 	Super::BeginPlay();
-}
 
-void ATerrainGenerator::EndPlay(const EEndPlayReason::Type EndPlayReason)
-{
-	Super::EndPlay(EndPlayReason);
+	ClearThreads();
+	ClearTimers();
 }
-
+	
 /////////////////////////////////////////////////////
 void ATerrainGenerator::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);	
+	UpdateChunkLOD();
 }
-
+	
 void ATerrainGenerator::EditorTick()
 {
-	UTerrainChunk::LastCameraLocation = UTerrainChunk::CameraLocation;
-	UTerrainChunk::CameraLocation = GetCameraLocation();
+	UpdateChunkLOD();			
+	HandleFinishedMeshDataJobs();
+}
+
+void ATerrainGenerator::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (bGenerateMap)
+	{
+		bGenerateMap = false;
+		OnGenerateMapClicked();
+	}
+	else if (bClearTerrain)
+	{
+		bClearTerrain = false;
+		ClearTerrain();
+	}
+	else if (bAutoUpdate)
+	{
+		UpdateMap();
+	}
+}
 	
+/////////////////////////////////////////////////////
+void ATerrainGenerator::UpdateChunkLOD()
+{
+	UTerrainChunk::LastCameraLocation = UTerrainChunk::CameraLocation;
+	UTerrainChunk::CameraLocation = UUnityLibrary::GetCameraLocation(this);
+
 	const float distanceMoved = FVector::Dist(UTerrainChunk::LastCameraLocation, UTerrainChunk::CameraLocation);
 
 	if (!FMath::IsNearlyZero(distanceMoved, 1.0f))
@@ -70,21 +96,26 @@ void ATerrainGenerator::EditorTick()
 			}
 		}
 	}
-
-	/* Update chunk LOD */
-	/*for (const TPair<FVector2D, UTerrainChunk*>& pair : Chunks)
-	{
-		UTerrainChunk* chunk = pair.Value;
-		if (IsValid(chunk))
-		{
-			chunk->UpdateChunk();
-		}
-	}*/
-		
-	HandleFinishedMeshDataJobs();
 }
 
 /////////////////////////////////////////////////////
+void ATerrainGenerator::ClearTerrain()
+{
+	ClearTimers();
+	ClearThreads();
+			
+	/* Clear all chunks. */
+	for (auto& chunk : Chunks)
+	{
+		if (chunk.Value)
+		{
+			chunk.Value->DestroyComponent();
+		}
+	}
+	
+	Chunks.Empty();
+}
+
 void ATerrainGenerator::ClearThreads()
 {
 	for (int32 i = 0; i < WorkerThreads.Num(); i++)
@@ -96,7 +127,7 @@ void ATerrainGenerator::ClearThreads()
 		}
 	}
 }
-
+	
 void ATerrainGenerator::ClearTimers()
 {
 	UWorld* world = GetWorld();
@@ -106,49 +137,49 @@ void ATerrainGenerator::ClearTimers()
 	}
 }
 
-void ATerrainGenerator::ClearTerrain()
+/////////////////////////////////////////////////////
+void ATerrainGenerator::OnGenerateMapClicked()
 {
-	ClearTimers();
-	ClearThreads();
-
-	/* Clear all chunks. */
-	for (auto& chunk : Chunks)
+	switch (DrawMode)
 	{
-		if (chunk.Value)
-		{
-			chunk.Value->DestroyComponent();
-		}
+	case EDrawMode::NoiseMap:
+		break;
+	case EDrawMode::ColorMap:
+		break;
+	case EDrawMode::Mesh:
+		GenerateTerrain();
+		break;
+	default:
+		break;
 	}
-
-	Chunks.Empty();
 }
 
 /////////////////////////////////////////////////////
 void ATerrainGenerator::GenerateTerrain()
 {
 	ClearTerrain();
-
+	
 	SetActorScale3D(FVector(Configuration.MapScale));
 	Configuration.InitLODs();
-
+	
 	const int32 numThreads = Configuration.GetNumberOfThreads();
 	const int32 chunksPerDirection = Configuration.NumChunks;	
 	const int32 chunkSize = Configuration.GetChunkSize();
-	
+		
 	/* Create worker threads. */	
 	WorkerThreads.SetNum(numThreads);
 	for (int32 i = 0; i < numThreads; i++)
 	{
-		WorkerThreads[i] = new FTerrainGeneratorWorker(Configuration, this);
+		WorkerThreads[i] = new FTerrainGeneratorWorker(Configuration, GetWorld());
 	}	
-	
+		
 	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
 	 * measured from their centers. */
 	const float topLeftChunkPositionX = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
 	const float topLeftChunkPositionY = ((chunksPerDirection - 1) * chunkSize) / -2.0f;
-
+	
 	/* Create mesh data jobs and add them to the worker threads. */
-	const FVector cameraLocation = GetCameraLocation();
+	const FVector cameraLocation = UUnityLibrary::GetCameraLocation(this);
 	int32 i = 0;
 	for (int32 y = 0; y < chunksPerDirection; ++y)
 	{
@@ -157,7 +188,7 @@ void ATerrainGenerator::GenerateTerrain()
 			/* Chunk position is relative to the whole terrain actor. */
 			const FVector chunkPosition = FVector(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY + (y * chunkSize), 0.0f);
 			const FVector2D noiseOffset = FVector2D(chunkPosition);
-
+	
 			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
 			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
 			newChunk->InitChunk(this, &Configuration.LODs);
@@ -165,123 +196,36 @@ void ATerrainGenerator::GenerateTerrain()
 			newChunk->bUseAsyncCooking = true;
 			newChunk->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			newChunk->SetCollisionResponseToAllChannels(ECR_Block);
-			
+				
 			newChunk->SetRelativeLocation(chunkPosition);
 			newChunk->SetChunkBoundingBox();
 			Chunks.Add(FVector2D(chunkPosition), newChunk);
-			
+				
 			const int32 levelOfDetail = newChunk->GetOptimalLOD(cameraLocation);			
 			CreateAndEnqueueMeshDataJob(newChunk, levelOfDetail, false, noiseOffset);
 			newChunk->Status = EChunkStatus::MESH_DATA_REQUESTED;
 			++i;
 		}
 	}
-	
+		
 	OldConfiguration = Configuration;
-	GetWorld()->GetTimerManager().SetTimer(TimerHandleEditorTick, this, &ATerrainGenerator::EditorTick, 1 / 60.0f, true);
+	GetWorld()->GetTimerManager().SetTimer(THEditorTick, this, &ATerrainGenerator::EditorTick, 1 / 60.0f, true);
 }
-
+	
 void ATerrainGenerator::UpdateMap()
 {
-	if (Configuration == OldConfiguration)
+	if (!bUpdateTerrain && Configuration == OldConfiguration)
 	{
 		return;
 	}
-	
+		
 	if (Configuration.NumChunks != OldConfiguration.NumChunks)
 	{
 		GenerateTerrain();
 		return;
 	}
-
-	UpdateAllChunks();
-
-	OldConfiguration = Configuration;
-}
-
-/////////////////////////////////////////////////////
-void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection /*= false*/, const FVector2D& noiseOffset /*= FVector2D::ZeroVector*/)
-{
-	FMeshDataJob newJob = FMeshDataJob(chunk, &FinishedMeshDataJobs, levelOfDetail, bUpdateMeshSection, noiseOffset);
-
-	static int32 i = 0;
-	FTerrainGeneratorWorker* worker = WorkerThreads[i % Configuration.GetNumberOfThreads()];
-	levelOfDetail == 0 ? worker->PriorityJobs.Enqueue(newJob) : worker->PendingJobs.Enqueue(newJob);
-	worker->UnPause();
-	++i;
-}
-
-/////////////////////////////////////////////////////
-void ATerrainGenerator::HandleFinishedMeshDataJobs()
-{
-	FMeshDataJob job;
-	while (FinishedMeshDataJobs.Dequeue(job))
-	{
-		FMeshData* meshData = job.GeneratedMeshData;
-		UTerrainChunk* chunk = job.Chunk;
-		const int32 lod = meshData->LOD;
-
-		if (job.bUpdateMeshSection)
-		{
-			chunk->UpdateMeshSection(lod, meshData->Vertices, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents);
-		}
-		else
-		{
-			chunk->CreateMeshSection(lod, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, false);
-			chunk->LODMeshes[lod] = meshData;
-			chunk->HeightMap = job.GeneratedHeightMap;
-		}
-
-		static FLinearColor color = FLinearColor::Red;
-		if(bShowBorderVertices)
-		{
-			for (const FVector& borderVertex : meshData->BorderVertices)
-			{
-				const FVector location = chunk->GetComponentTransform().TransformPosition(borderVertex);
-				UKismetSystemLibrary::DrawDebugPoint(this, location, 5.0f, color, 30.0f);
-			}
-
-			if (color == FLinearColor::Red)
-			{
-				color = FLinearColor::Green;
-			}
-			else
-			{
-				color = FLinearColor::Red;
-			}
-		}
-
-		if (bVisualizeNormals)
-		{
-			const TArray<FVector>& vertices = meshData->Vertices;
-			const TArray<FVector>& normals = meshData->Normals;
-			for (int32 i = 0; i < vertices.Num(); i++)
-			{
-				const FVector location = chunk->GetComponentTransform().TransformPosition(vertices[i]);
-				const FVector endLocation = location + (normals[i] * 100.0f);
-
-				UKismetSystemLibrary::DrawDebugArrow(this, location, endLocation, 10.0f, color, 30.0f, 5.0f);
-			}
-
-			if (color == FLinearColor::Red)
-			{
-				color = FLinearColor::Green;
-			}
-			else
-			{
-				color = FLinearColor::Red;
-			}
-		}
-
-		chunk->SetMaterial(lod, MeshMaterial);
-		chunk->SetNewLOD(lod);
-		chunk->Status = EChunkStatus::IDLE;
-	}
-}
-
-/////////////////////////////////////////////////////
-void ATerrainGenerator::UpdateAllChunks()
-{
+	
+	/* Update the configurations for all worker threads. */
 	for (FTerrainGeneratorWorker* worker : WorkerThreads)
 	{
 		if (worker)
@@ -289,10 +233,13 @@ void ATerrainGenerator::UpdateAllChunks()
 			worker->UpdateConfiguration(Configuration);
 		}
 	}
-	
+
+	bUpdateTerrain = false;
+	bGenerateMap = false;
+
 	const int32 chunksPerDirection = Configuration.NumChunks;
 	const int32 chunkSize = Configuration.GetChunkSize();
-	const FVector cameraLocation = GetCameraLocation();
+	const FVector cameraLocation = UUnityLibrary::GetCameraLocation(this);
 
 	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
 	 * measured from their centers. */
@@ -305,7 +252,7 @@ void ATerrainGenerator::UpdateAllChunks()
 		for (int32 x = 0; x < Configuration.NumChunks; ++x)
 		{
 			const FVector2D chunkPosition = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));
-			UTerrainChunk** chunkPointer = Chunks.Find(chunkPosition);
+			UTerrainChunk * *chunkPointer = Chunks.Find(chunkPosition);
 			if (chunkPointer == nullptr)
 			{
 				UE_LOG(LogTemp, Error, TEXT("Chunk position '%s' not viable."), *chunkPosition.ToString());
@@ -313,58 +260,58 @@ void ATerrainGenerator::UpdateAllChunks()
 			}
 
 			UTerrainChunk* chunk = *chunkPointer;
-			const FVector2D offset = CalculateNoiseOffset(x, y);
-			
+
 			/* Update all LOD meshes. */
 			for (int32 lod = 0; lod < chunk->LODMeshes.Num(); ++lod)
 			{
-				const FMeshData* data = chunk->LODMeshes[lod];
+				const FTerrainMeshData* data = chunk->LODMeshes[lod];
 				if (data)
 				{
-					CreateAndEnqueueMeshDataJob(chunk, lod, true, offset);
+					CreateAndEnqueueMeshDataJob(chunk, lod, true, chunkPosition);
 				}
 			}
 			++i;
 		}
 	}
+	
+	OldConfiguration = Configuration;
 }
 
 /////////////////////////////////////////////////////
-FVector2D ATerrainGenerator::CalculateNoiseOffset(int32 x, int32 y)
+void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection /*= false*/, const FVector2D& noiseOffset /*= FVector2D::ZeroVector*/)
 {
-	const int32 chunksPerDirection = Configuration.NumChunks;
-	const int32 chunkSize = Configuration.GetChunkSize();
-
-	/* The top positions. Used for noise generation. */
-	const int32 totalHeight = chunkSize * chunksPerDirection;
-	const float topLeftPositionX = totalHeight / -2.0f;
-	const float topLeftPositionY = totalHeight / 2.0f;
-
-	return FVector2D(topLeftPositionX + (x * chunkSize), topLeftPositionY - (y * chunkSize));
+	FMeshDataJob newJob = FMeshDataJob(chunk, &FinishedMeshDataJobs, levelOfDetail, bUpdateMeshSection, noiseOffset);
+	
+	static int32 i = 0;
+	FTerrainGeneratorWorker* worker = WorkerThreads[i % Configuration.GetNumberOfThreads()];
+	levelOfDetail == 0 ? worker->PriorityJobs.Enqueue(newJob) : worker->PendingJobs.Enqueue(newJob);
+	worker->UnPause();
+	++i;
 }
-
+	
 /////////////////////////////////////////////////////
-FVector ATerrainGenerator::GetCameraLocation()
+void ATerrainGenerator::HandleFinishedMeshDataJobs()
 {
-	FVector cameraLocation = FVector::ZeroVector;
-
-	const APlayerCameraManager* cameraManager = UGameplayStatics::GetPlayerCameraManager(this, 0);
-	if (IsValid(cameraManager))
+	FMeshDataJob job;
+	while (FinishedMeshDataJobs.Dequeue(job))
 	{
-		cameraLocation = cameraManager->GetCameraLocation();
-	}
-	else
-	{
-		const UWorld* world = GetWorld();
-		if (IsValid(world))
+		FTerrainMeshData* meshData = job.GeneratedMeshData;
+		UTerrainChunk* chunk = job.Chunk;
+		const int32 lod = meshData->LOD;
+	
+		if (job.bUpdateMeshSection)
 		{
-			auto viewLocations = world->ViewLocationsRenderedLastFrame;
-			if (viewLocations.Num() != 0)
-			{
-				cameraLocation = viewLocations[0];
-			}			
+			chunk->UpdateMeshSection(lod, meshData->Vertices, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents);
 		}
+		else
+		{
+			chunk->CreateMeshSection(lod, meshData->Vertices, meshData->Triangles, meshData->Normals, meshData->UVs, meshData->VertexColors, meshData->Tangents, false);
+			chunk->LODMeshes[lod] = meshData;
+			chunk->HeightMap = job.GeneratedHeightMap;
+		}
+	
+		chunk->SetMaterial(lod, TerrainMaterial);
+		chunk->SetNewLOD(lod);
+		chunk->Status = EChunkStatus::IDLE;
 	}
-
-	return cameraLocation;
 }
