@@ -252,7 +252,7 @@ void ATerrainGenerator::UpdateMap()
 		for (int32 x = 0; x < Configuration.NumChunks; ++x)
 		{
 			const FVector2D chunkPosition = FVector2D(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY - (y * chunkSize));
-			UTerrainChunk * *chunkPointer = Chunks.Find(chunkPosition);
+			UTerrainChunk** chunkPointer = Chunks.Find(chunkPosition);
 			if (chunkPointer == nullptr)
 			{
 				UE_LOG(LogTemp, Error, TEXT("Chunk position '%s' not viable."), *chunkPosition.ToString());

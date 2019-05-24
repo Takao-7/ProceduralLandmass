@@ -43,7 +43,7 @@ public:
 		this->NumRows = otherArray.NumRows;
 		this->NumColumns = otherArray.NumColumns;
 
-		TFunctionRef<void (int32 x, int32 y, float& value)> lamdba = [&](int32 x, int32 y, float& value) { value = otherArray.GetValue(x, y); };
+		const auto lamdba = [&](int32 x, int32 y, float& value) { value = otherArray.GetValue(x, y); };
 		ForEachWithIndex(lamdba);
 	}
 
