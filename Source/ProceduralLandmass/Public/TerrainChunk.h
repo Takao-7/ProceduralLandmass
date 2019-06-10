@@ -24,7 +24,7 @@ enum class EChunkStatus : uint8
 };
 
 
-UCLASS(BlueprintType)
+UCLASS(BlueprintType, Blueprintable)
 class UTerrainChunk : public UProceduralMeshComponent
 {
 	GENERATED_BODY()

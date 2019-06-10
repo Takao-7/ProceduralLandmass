@@ -12,15 +12,11 @@ struct FProcMeshTangent;
 struct FLinearColor;
 
 
-#define PROFILE_CPU 0
+DECLARE_STATS_GROUP(TEXT("MeshData"), STATGROUP_MeshData, STATCAT_Advanced);
 
-#if PROFILE_CPU
-	DECLARE_STATS_GROUP(TEXT("MeshData"), STATGROUP_MeshData, STATCAT_Advanced);
-	
-	DECLARE_CYCLE_STAT(TEXT("GenerateTriangles"), STAT_GenerateTriangles, STATGROUP_MeshData);
-	DECLARE_CYCLE_STAT(TEXT("CalculateNormals"), STAT_CalculateNormals, STATGROUP_MeshData);
-	DECLARE_CYCLE_STAT(TEXT("UpdateMeshData"), STAT_UpdateMeshData, STATGROUP_MeshData);
-#endif // PROFILE_CPU
+DECLARE_CYCLE_STAT(TEXT("CalculateTriangles"), STAT_CalculateTriangles, STATGROUP_MeshData);
+DECLARE_CYCLE_STAT(TEXT("CalculateNormals"), STAT_CalculateNormals, STATGROUP_MeshData);
+DECLARE_CYCLE_STAT(TEXT("UpdateMeshData"), STAT_UpdateMeshData, STATGROUP_MeshData);
 
 
 /**
@@ -102,17 +98,19 @@ public:
 			int32 borderVertexIndex = -1;
 			for (int32 y = 0; y < borderVerticesPerLine; ++y)
 			{
-				for (int32 x = 0; x < borderVerticesPerLine; x++)
+				for (int32 x = 0; x < borderVerticesPerLine; ++x)
 				{
+					const int32 index = x + y * borderVerticesPerLine;
+
 					const bool bIsBorderVertex = y == 0 || y == borderVerticesPerLine - 1 || x == 0 || x == borderVerticesPerLine - 1;
 					if (bIsBorderVertex)
 					{
-						VerticesIndexMap[x + y * borderVerticesPerLine] = borderVertexIndex;
+						VerticesIndexMap[index] = borderVertexIndex;
 						borderVertexIndex--;
 					}
 					else
 					{
-						VerticesIndexMap[x + y * borderVerticesPerLine] = meshVertexIndex;
+						VerticesIndexMap[index] = meshVertexIndex;
 						meshVertexIndex++;
 					}
 				}
@@ -124,7 +122,7 @@ public:
 
 		/* Adds a triangle to the triangle array (all indices positive) or
 		 * border triangle array (any index smaller 0). */
-		auto AddTriangle = [&](int32 a, int32 b, int32 c) -> void
+		auto AddTriangle = [&](int32 a, int32 b, int32 c)
 		{
 			if (a >= 0 && b >= 0 && c >= 0)
 			{
@@ -141,13 +139,11 @@ public:
 				borderTriangleIndex += 3;
 			}
 		};
-		
+
 		/* Calculate triangles, vertices and UVs. */
 		for (int32 y = 0; y < borderVerticesPerLine; ++y)
 		{
-			#if PROFILE_CPU
-			SCOPE_CYCLE_COUNTER(STAT_GenerateTriangles);
-			#endif // PROFILE_CPU
+			SCOPE_CYCLE_COUNTER(STAT_CalculateTriangles);
 
 			for (int32 x = 0; x < borderVerticesPerLine; ++x)
 			{
@@ -174,9 +170,7 @@ public:
 		}
 
 		{ /* Calculate normals. */
-			#if PROFILE_CPU
-			SCOPE_CYCLE_COUNTER(STAT_GenerateNormals);
-			#endif // PROFILE_CPU
+			SCOPE_CYCLE_COUNTER(STAT_CalculateNormals);
 
 			/**
 			 * Calculates a normal vector from three vertex indices.
@@ -295,9 +289,7 @@ public:
 
 	void UpdateMeshData(const FArray2D& heightMap, float heightMultiplier, const TArray<float>& borderHeightMap, const UCurveFloat* heightCurve = nullptr)
 	{
-		#if PROFILE_CPU
 		SCOPE_CYCLE_COUNTER(STAT_UpdateMeshData);
-		#endif // PROFILE_CPU
 
 		const int32 heightMapWidth = heightMap.GetWidth();
 		const int32 meshSimplificationIncrement = LOD == 0 ? 1 : LOD * 2;

@@ -33,7 +33,7 @@ void UTerrainChunk::InitChunk(ATerrainGenerator* parentTerrainGenerator, TArray<
 	LODMeshes.SetNum(maxLOD + 1);
 	RequestedMeshData.SetNum(maxLOD + 1);
 	AttachToComponent(TerrainGenerator->GetRootComponent(), FAttachmentTransformRules::SnapToTargetIncludingScale);
-
+	
 	TotalChunkSize = TerrainGenerator->Configuration.GetChunkSize() * parentTerrainGenerator->Configuration.MapScale;
 }
 
