@@ -1,11 +1,11 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "TerrainGeneratorWorker.h"
-#include "NoiseGeneratorInterface.h"
 #include "HAL/RunnableThread.h"
 #include "TerrainGenerator.h"
 #include <Kismet/KismetSystemLibrary.h>
 #include "UnityLibrary.h"
+#include "UFNNoiseGenerator.h"
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
@@ -19,8 +19,8 @@ FTerrainGeneratorWorker::FTerrainGeneratorWorker(const FTerrainConfiguration& co
 
 	bWorkFinished = false;
 
-	const FString threadName = TEXT("Terrain Generator Worker Thread #") + FString::FromInt(GetNewThreadNumber());
-	Thread = FRunnableThread::Create(this, *threadName);	
+	ThreadName = TEXT("Terrain Generator Worker Thread #") + FString::FromInt(GetNewThreadNumber());
+	Thread = FRunnableThread::Create(this, *ThreadName);
 }
 
 FTerrainGeneratorWorker::~FTerrainGeneratorWorker()
@@ -73,12 +73,15 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 
 	/* Generate a height map if we need one or update it. */
  	FArray2D* heightMap = bUpdateSection || chunk->HeightMap ? chunk->HeightMap : new FArray2D(numVertices, numVertices);
-	UNoiseGeneratorInterface* noiseGenerator = Configuration.NoiseGenerator;
+	UUFNNoiseGenerator* noiseGenerator = Configuration.NoiseGenerator;
 	if (IsValid(noiseGenerator) && (bUpdateSection || chunk->HeightMap == nullptr))
 	{
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
 		{
-			value = noiseGenerator->GetNoise2D(topLeftX + xIndex, topLeftY + yIndex);
+			const float X = topLeftX + xIndex;
+			const float Y = topLeftY + yIndex;
+
+			value = noiseGenerator->GetNoise2D(X, Y);
 		});
 	}
 	currentJob.GeneratedHeightMap = heightMap;

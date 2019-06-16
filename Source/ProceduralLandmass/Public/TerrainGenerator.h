@@ -43,29 +43,7 @@ class PROCEDURALLANDMASS_API ATerrainGenerator : public AActor
 	/////////////////////////////////////////////////////
 					/* Parameters */
 	/////////////////////////////////////////////////////
-protected:
-	/** 
-	 * Use this as a button to (re-) generate the map.
-	 * This will clear the entire map and all of it's chunks. 
-	 */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
-	bool bGenerateMap = false;
-	
-	/**
-	 * Just update the terrain. This will not clear the entire map and is identically
-	 * if @see bAutoUpdate is set to true and a value was changed.
-	 * Use this if you have updated the float curve.
-	 */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
-	bool bUpdateTerrain = false;
-
-	/**
-	 * Destroy all chunks and terrain workers. After doing this, the terrain
-	 * has the same state as when it was spawned.
-	 */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
-	bool bClearTerrain = false;
-	
+protected:	
 	/* If true we will generate the map each time a value changes. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Map Generator|General")
 	bool bAutoUpdate = true;
@@ -118,20 +96,30 @@ public:
 	~ATerrainGenerator();
 
 protected:
-	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void OnGenerateMapClicked();
-
-	/* Generates the entire terrain. Clears the current terrain chunks if existing (@see ClearTerrain). */
+	/** Generates the entire terrain. Clears the current terrain chunks if existing (@see ClearTerrain). */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void GenerateTerrain();
+
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Map Generator|General")
+	bool bGenerateTerrain = false;
 	
-	/* Updates the terrain, if only the noise generator has changed. */
+	/**
+	 * Just update the terrain. This will not clear the entire map and is identically
+	 * if @see bAutoUpdate is set to true and a value was changed.
+	 * Use this if you have updated the float curve.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
-	void UpdateMap();
+	void UpdateTerrain();
+
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Map Generator|General")
+	bool bUpdateTerrain = false;
 	
-	/* Removes all timers for this object, clears all threads and destroys all chunks. */
+	/** Removes all timers for this object, clears all threads and destroys all chunks. */
 	UFUNCTION(BlueprintCallable, Category = "Map Generator")
 	void ClearTerrain();
+
+	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = "Map Generator|General")
+	bool bClearTerrain = false;
 	
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;

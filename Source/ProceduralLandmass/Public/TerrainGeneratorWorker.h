@@ -61,6 +61,8 @@ private:
 
 	FTerrainConfiguration Configuration;
 
+	FString ThreadName;
+
 	static int32 ThreadCounter;
 	static int32 GetNewThreadNumber() { return ThreadCounter++; };
 

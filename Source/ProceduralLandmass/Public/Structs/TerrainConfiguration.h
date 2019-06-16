@@ -1,10 +1,11 @@
 #pragma once
 #include "Structs/LODInfo.h"
-#include "NoiseGeneratorInterface.h"
+#include "UFNNoiseGenerator.h"
+#include "FastNoise.h"
+#include "UFNBlueprintFunctionLibrary.h"
 #include "TerrainConfiguration.generated.h"
 
 
-class UNoiseGeneratorInterface;
 struct FArray2D;
 
 
@@ -39,7 +40,7 @@ public:
 
 	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UNoiseGeneratorInterface* NoiseGenerator = nullptr;
+	UUFNNoiseGenerator* NoiseGenerator = nullptr;
 
 	/* Number of vertices per direction per chunk. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -72,10 +73,16 @@ public:
 	{
 		CopyConfiguration(reference);
 		
-		if (reference.NoiseGenerator)
+		if (UFastNoise* noiseGen = Cast<UFastNoise>(reference.NoiseGenerator))
 		{
-			NoiseGenerator = DuplicateObject<UNoiseGeneratorInterface>(reference.NoiseGenerator, outer);
-			NoiseGenerator->CopySettings(reference.NoiseGenerator);
+			NoiseGenerator = UUFNBlueprintFunctionLibrary::CopyNoiseGenerator(noiseGen);
+
+			const float X = 10.0f;
+			const float Y = 10.0f;
+			const float noiseA = NoiseGenerator->GetNoise2D(X, Y);
+			const float noiseB = reference.NoiseGenerator->GetNoise2D(X, Y);
+
+			check(FMath::IsNearlyEqual(noiseA, noiseB));
 		}
 
 		if (reference.HeightCurve)

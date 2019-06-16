@@ -8,7 +8,6 @@
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Public/UnityLibrary.h"
-#include "PerlinNoiseGenerator.h"
 #include "TerrainGeneratorWorker.h"
 #include "TimerManager.h"
 #include "GameFramework/PlayerController.h"
@@ -60,22 +59,23 @@ void ATerrainGenerator::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	if (bGenerateMap)
+	if (bGenerateTerrain)
 	{
-		bGenerateMap = false;
-		OnGenerateMapClicked();
+		bGenerateTerrain = false;
+		GenerateTerrain();
 	}
 	else if (bClearTerrain)
 	{
 		bClearTerrain = false;
 		ClearTerrain();
 	}
-	else if (bAutoUpdate)
+	else if (bUpdateTerrain || bAutoUpdate)
 	{
-		UpdateMap();
+		bUpdateTerrain = false;
+		UpdateTerrain();
 	}
 }
-	
+
 /////////////////////////////////////////////////////
 void ATerrainGenerator::UpdateChunkLOD()
 {
@@ -138,23 +138,6 @@ void ATerrainGenerator::ClearTimers()
 }
 
 /////////////////////////////////////////////////////
-void ATerrainGenerator::OnGenerateMapClicked()
-{
-	switch (DrawMode)
-	{
-	case EDrawMode::NoiseMap:
-		break;
-	case EDrawMode::ColorMap:
-		break;
-	case EDrawMode::Mesh:
-		GenerateTerrain();
-		break;
-	default:
-		break;
-	}
-}
-
-/////////////////////////////////////////////////////
 void ATerrainGenerator::GenerateTerrain()
 {
 	ClearTerrain();
@@ -207,14 +190,14 @@ void ATerrainGenerator::GenerateTerrain()
 			++i;
 		}
 	}
-		
+
 	OldConfiguration = Configuration;
 	GetWorld()->GetTimerManager().SetTimer(THEditorTick, this, &ATerrainGenerator::EditorTick, 1 / 60.0f, true);
 }
 	
-void ATerrainGenerator::UpdateMap()
+void ATerrainGenerator::UpdateTerrain()
 {
-	if (!bUpdateTerrain && Configuration == OldConfiguration)
+	if (Configuration == OldConfiguration)
 	{
 		return;
 	}
@@ -233,10 +216,7 @@ void ATerrainGenerator::UpdateMap()
 			worker->UpdateConfiguration(Configuration);
 		}
 	}
-
-	bUpdateTerrain = false;
-	bGenerateMap = false;
-
+	
 	const int32 chunksPerDirection = Configuration.NumChunks;
 	const int32 chunkSize = Configuration.GetChunkSize();
 	const FVector cameraLocation = UUnityLibrary::GetCameraLocation(this);
