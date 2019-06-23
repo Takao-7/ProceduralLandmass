@@ -1,8 +1,6 @@
 #pragma once
 #include "Structs/LODInfo.h"
-#include "UFNNoiseGenerator.h"
-#include "FastNoise.h"
-#include "UFNBlueprintFunctionLibrary.h"
+#include "Public/NoiseGeneratorInterface.h"
 #include "TerrainConfiguration.generated.h"
 
 
@@ -40,7 +38,7 @@ public:
 
 	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UUFNNoiseGenerator* NoiseGenerator = nullptr;
+	UNoiseGenerator* NoiseGenerator = nullptr;
 
 	/* Number of vertices per direction per chunk. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -71,24 +69,7 @@ public:
 	FTerrainConfiguration() {}
 	FTerrainConfiguration(const FTerrainConfiguration& reference, UObject* outer)
 	{
-		CopyConfiguration(reference);
-		
-		if (UFastNoise* noiseGen = Cast<UFastNoise>(reference.NoiseGenerator))
-		{
-			NoiseGenerator = UUFNBlueprintFunctionLibrary::CopyNoiseGenerator(noiseGen);
-
-			const float X = 10.0f;
-			const float Y = 10.0f;
-			const float noiseA = NoiseGenerator->GetNoise2D(X, Y);
-			const float noiseB = reference.NoiseGenerator->GetNoise2D(X, Y);
-
-			check(FMath::IsNearlyEqual(noiseA, noiseB));
-		}
-
-		if (reference.HeightCurve)
-		{
-			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, outer);
-		}
+		CopyConfiguration(reference, outer);		
 	}
 	
 	///////////////////////////////////////////////////////
@@ -107,7 +88,7 @@ public:
 	}
 
 	///////////////////////////////////////////////////////
-	void CopyConfiguration(const FTerrainConfiguration& reference)
+	void CopyConfiguration(const FTerrainConfiguration &reference, UObject* outer)
 	{
 		NumberOfThreads = reference.NumberOfThreads;
 		NumVertices = reference.NumVertices;
@@ -115,10 +96,20 @@ public:
 		NumChunks = reference.NumChunks;
 		Amplitude = reference.Amplitude;
 		Collision = reference.Collision;
-		LODs = LODs;
+		LODs = reference.LODs;
+
+		if (reference.HeightCurve)
+		{
+			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, outer);
+		}
+
+		if (reference.NoiseGenerator)
+		{
+			NoiseGenerator = reference.NoiseGenerator->CopyGenerator();
+		}
 	}
 
-	///////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////
 	void InitLODs()
 	{
 		LODs.Empty();

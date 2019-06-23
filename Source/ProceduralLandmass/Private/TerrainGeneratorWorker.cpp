@@ -5,7 +5,6 @@
 #include "TerrainGenerator.h"
 #include <Kismet/KismetSystemLibrary.h>
 #include "UnityLibrary.h"
-#include "UFNNoiseGenerator.h"
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
@@ -73,7 +72,7 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 
 	/* Generate a height map if we need one or update it. */
  	FArray2D* heightMap = bUpdateSection || chunk->HeightMap ? chunk->HeightMap : new FArray2D(numVertices, numVertices);
-	UUFNNoiseGenerator* noiseGenerator = Configuration.NoiseGenerator;
+	UNoiseGenerator* noiseGenerator = Configuration.NoiseGenerator;
 	if (IsValid(noiseGenerator) && (bUpdateSection || chunk->HeightMap == nullptr))
 	{
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
@@ -139,7 +138,7 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 //////////////////////////////////////////////////////
 void FTerrainGeneratorWorker::UpdateConfiguration(const FTerrainConfiguration& newConfig)
 {
-	Configuration.CopyConfiguration(newConfig);
+	Configuration.CopyConfiguration(newConfig, nullptr);
 }
 
 //////////////////////////////////////////////////////
