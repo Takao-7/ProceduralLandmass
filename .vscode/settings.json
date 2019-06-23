@@ -1,8 +1,0 @@
-{
-	"files.exclude": {
-		"/home/paul/Documents/UE4 Projects/ProceduralLandmass/.git": true,
-		"/home/paul/Documents/UE4 Projects/ProceduralLandmass/.vscode": true,
-		"/home/paul/Documents/UE4 Projects/ProceduralLandmass/Content": true,
-		"/home/paul/Documents/UE4 Projects/ProceduralLandmass/Intermediate": true
-	}
-}

@@ -5,6 +5,7 @@
 #include "TerrainGenerator.h"
 #include <Kismet/KismetSystemLibrary.h>
 #include "UnityLibrary.h"
+#include "NoiseGeneratorInterface.h"
 
 int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
