@@ -3,7 +3,7 @@
 #include "TerrainGeneratorWorker.h"
 #include "HAL/RunnableThread.h"
 #include "TerrainGenerator.h"
-#include <Kismet/KismetSystemLibrary.h>
+#include "Kismet/KismetSystemLibrary.h"
 #include "UnityLibrary.h"
 #include "NoiseGeneratorInterface.h"
 
