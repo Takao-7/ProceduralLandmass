@@ -41,8 +41,8 @@ public:
 	TSubclassOf<UNoiseGenerator> NoiseGeneratorClass = nullptr;
 
 	/* The noise generator object. */
-	UPROPERTY(BlueprintReadWrite)
-	UNoiseGenerator* NoiseGenerator = nullptr;
+	UPROPERTY(BlueprintReadOnly)
+	UNoiseGenerator* NoiseGenerator;
 
 	/* Number of vertices per direction per chunk. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -74,15 +74,15 @@ public:
 	{
 		if (NoiseGeneratorClass != nullptr)
 		{
-			NoiseGenerator = NewObject<UNoiseGenerator>(nullptr, NoiseGeneratorClass);
+			NoiseGenerator = NewObject<UNoiseGenerator>((UObject*)GetTransientPackage(), NoiseGeneratorClass);
 		}
 	}
 
-	FTerrainConfiguration(const FTerrainConfiguration& reference, UObject* outer)
+	FTerrainConfiguration(const FTerrainConfiguration& reference)
 	{
-		CopyConfiguration(reference, outer);		
+		CopyConfiguration(reference);
 	}
-	
+
 	///////////////////////////////////////////////////////
 	bool operator==(const FTerrainConfiguration& other) const
 	{
@@ -99,7 +99,7 @@ public:
 	}
 
 	///////////////////////////////////////////////////////
-	void CopyConfiguration(const FTerrainConfiguration &reference, UObject* outer)
+	void CopyConfiguration(const FTerrainConfiguration& reference)
 	{
 		NumberOfThreads = reference.NumberOfThreads;
 		NumVertices = reference.NumVertices;
@@ -112,13 +112,13 @@ public:
 
 		if (reference.HeightCurve)
 		{
-			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, outer);
+			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, nullptr);
 		}
 
 		UNoiseGenerator* otherNoiseGenerator = reference.NoiseGenerator;
 		if (otherNoiseGenerator)
 		{
-			NoiseGenerator = DuplicateObject<UNoiseGenerator>(otherNoiseGenerator, outer);
+			NoiseGenerator = DuplicateObject<UNoiseGenerator>(otherNoiseGenerator, nullptr);
 			NoiseGenerator->CopyGenerator(otherNoiseGenerator);
 		}
 	}

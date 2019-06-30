@@ -11,9 +11,9 @@ int32 FTerrainGeneratorWorker::ThreadCounter = 0;
 
 
 //////////////////////////////////////////////////////
-FTerrainGeneratorWorker::FTerrainGeneratorWorker(const FTerrainConfiguration& configuration, UObject* outer)
+FTerrainGeneratorWorker::FTerrainGeneratorWorker(const FTerrainConfiguration& configuration)
 {
-	Configuration = FTerrainConfiguration(configuration, outer);
+	Configuration = FTerrainConfiguration(configuration);
 
 	Semaphore = FGenericPlatformProcess::GetSynchEventFromPool(false);
 
@@ -74,7 +74,7 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	/* Generate a height map if we need one or update it. */
  	FArray2D* heightMap = bUpdateSection || chunk->HeightMap ? chunk->HeightMap : new FArray2D(numVertices, numVertices);
 	UNoiseGenerator* noiseGenerator = Configuration.NoiseGenerator;
-	if(noiseGenerator == nullptr)
+	if(!IsValid(noiseGenerator))
 	{
 		UE_LOG(LogTemp, Error, TEXT("No noise generator"));
 	}
@@ -142,9 +142,9 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 }
 
 //////////////////////////////////////////////////////
-void FTerrainGeneratorWorker::UpdateConfiguration(const FTerrainConfiguration& newConfig, UObject* outer)
+void FTerrainGeneratorWorker::UpdateConfiguration(const FTerrainConfiguration& newConfig)
 {
-	Configuration.CopyConfiguration(newConfig, outer);
+	Configuration.CopyConfiguration(newConfig);
 }
 
 //////////////////////////////////////////////////////

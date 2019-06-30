@@ -35,19 +35,19 @@ public:
     float GetNoise3D(float X, float Y, float Z) const;
     virtual float GetNoise3D_Implementation(float X, float Y, float Z) const { return 0.0f; };
 
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, meta = (ExposeOnSpawn = true))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true))
 	float NoiseScale = 50.0f;
 
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, meta = (ExposeOnSpawn = true))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true))
 	int32 Seed = 5;
 
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, meta = (ExposeOnSpawn = true))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true))
 	float Persistence = 0.5f;
 
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, meta = (ExposeOnSpawn = true))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true))
 	float Lacunarity = 2.0f;
 
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, meta = (ExposeOnSpawn = true))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true))
 	int32 Octaves = 4;
 
 	UPROPERTY(BlueprintReadWrite)

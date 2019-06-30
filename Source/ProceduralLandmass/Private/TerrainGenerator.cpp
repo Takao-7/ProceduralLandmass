@@ -38,8 +38,8 @@ void ATerrainGenerator::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ClearThreads();
 	ClearTimers();
+	ClearThreads();
 }
 	
 /////////////////////////////////////////////////////
@@ -146,7 +146,7 @@ void ATerrainGenerator::GenerateTerrain()
 	Configuration.InitLODs();
 	if (Configuration.NoiseGeneratorClass)
 	{
-		Configuration.NoiseGenerator = NewObject<UNoiseGenerator>(this, Configuration.NoiseGeneratorClass);
+		Configuration.NoiseGenerator = NewObject<UNoiseGenerator>((UObject*)GetTransientPackage(), Configuration.NoiseGeneratorClass);
 	}
 	
 	const int32 numThreads = Configuration.GetNumberOfThreads();
@@ -157,7 +157,7 @@ void ATerrainGenerator::GenerateTerrain()
 	WorkerThreads.SetNum(numThreads);
 	for (int32 i = 0; i < numThreads; i++)
 	{
-		WorkerThreads[i] = new FTerrainGeneratorWorker(Configuration, GetWorld());
+		WorkerThreads[i] = new FTerrainGeneratorWorker(Configuration);
 	}	
 		
 	/* The top positions for chunks. These are the chunk's relative positions to the terrain generator actor,
@@ -217,7 +217,7 @@ void ATerrainGenerator::UpdateTerrain()
 	{
 		if (worker)
 		{
-			worker->UpdateConfiguration(Configuration, this);
+			worker->UpdateConfiguration(Configuration);
 		}
 	}
 	
