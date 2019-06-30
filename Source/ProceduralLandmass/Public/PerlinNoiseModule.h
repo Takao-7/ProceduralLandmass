@@ -14,4 +14,9 @@ class PROCEDURALLANDMASS_API UPerlinNoiseModule : public UNoiseGenerator
 {
 	GENERATED_BODY()
 	
+public:
+    //UPerlinNoiseModule();
+    //UPerlinNoiseModule(float scale);
+    //
+    //virtual float GetNoise2D_Implementation(float X, float Y) const override;
 };

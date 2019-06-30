@@ -10,8 +10,8 @@ class PROCEDURALLANDMASS_API UNoiseGenerator : public UObject
     GENERATED_BODY()
 
 public:
-    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Noise Generator")
-    virtual UNoiseGenerator* CreateModule();
+    //UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Noise Generator")
+    //UNoiseGenerator* CreateModule();
     
     UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "Noise Generator")
     float GetNoise2D(float X, float Y) const;

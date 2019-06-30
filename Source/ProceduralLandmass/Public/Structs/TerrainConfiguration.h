@@ -105,7 +105,7 @@ public:
 
 		if (reference.NoiseGenerator)
 		{
-            //NoiseGenerator = CopyObject<UNoiseGenerator>(reference.NoiseGenerator);
+            NoiseGenerator = DuplicateObject<UNoiseGenerator>(reference.NoiseGenerator, outer);
 		}
 	}
 
