@@ -36,6 +36,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
 	int32 NumberOfThreads = 7;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSubclassOf<UNoiseGenerator> NoiseGeneratorClass = nullptr;
+
 	/* The noise generator to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UNoiseGenerator* NoiseGenerator = nullptr;
@@ -97,15 +100,17 @@ public:
 		Amplitude = reference.Amplitude;
 		Collision = reference.Collision;
 		LODs = reference.LODs;
+		NoiseGeneratorClass = reference.NoiseGeneratorClass;
 
 		if (reference.HeightCurve)
 		{
 			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, outer);
 		}
 
-		if (reference.NoiseGenerator)
+		if (reference.NoiseGeneratorClass)
 		{
-            NoiseGenerator = DuplicateObject<UNoiseGenerator>(reference.NoiseGenerator, outer);
+			NoiseGenerator = NewObject<UNoiseGenerator>(outer, reference.NoiseGeneratorClass);
+            //NoiseGenerator = DuplicateObject<UNoiseGenerator>(reference.NoiseGenerator, outer);
 		}
 	}
 

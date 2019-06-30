@@ -74,6 +74,11 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 	/* Generate a height map if we need one or update it. */
  	FArray2D* heightMap = bUpdateSection || chunk->HeightMap ? chunk->HeightMap : new FArray2D(numVertices, numVertices);
 	UNoiseGenerator* noiseGenerator = Configuration.NoiseGenerator;
+	if(noiseGenerator == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("No noise generator"));
+	}
+
 	if (IsValid(noiseGenerator) && (bUpdateSection || chunk->HeightMap == nullptr))
 	{
 		heightMap->ForEachWithIndex([&](float& value, int32 xIndex, int32 yIndex)
