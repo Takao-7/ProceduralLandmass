@@ -45,7 +45,7 @@ public:
 		Semaphore->Trigger();
 	}
 
-	void UpdateConfiguration(const FTerrainConfiguration& newConfig);
+	void UpdateConfiguration(const FTerrainConfiguration& newConfig, UObject* outer);
 
 private:
 	FThreadSafeBool bPause = false;

@@ -142,9 +142,9 @@ void FTerrainGeneratorWorker::DoWork(FMeshDataJob& currentJob)
 }
 
 //////////////////////////////////////////////////////
-void FTerrainGeneratorWorker::UpdateConfiguration(const FTerrainConfiguration& newConfig)
+void FTerrainGeneratorWorker::UpdateConfiguration(const FTerrainConfiguration& newConfig, UObject* outer)
 {
-	Configuration.CopyConfiguration(newConfig, nullptr);
+	Configuration.CopyConfiguration(newConfig, outer);
 }
 
 //////////////////////////////////////////////////////

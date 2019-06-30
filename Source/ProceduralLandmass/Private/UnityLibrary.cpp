@@ -23,7 +23,6 @@ float UUnityLibrary::PerlinNoise(const FVector2D& vec)
 	const int32 BM = 255;
 
 	static int32 p[B + B + 2];
-	static float g[B + B + 2];
 	static float g1[B + B + 2];
 	static TArray<FVector2D> g2;
 	static TArray<FVector> g3;

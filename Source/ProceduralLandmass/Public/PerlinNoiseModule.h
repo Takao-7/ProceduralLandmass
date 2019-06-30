@@ -16,23 +16,21 @@ class PROCEDURALLANDMASS_API UPerlinNoiseModule : public UNoiseGenerator
 	
 public:
     UPerlinNoiseModule();
-    UPerlinNoiseModule(int32 seed);
+	UPerlinNoiseModule(float noiseScale, int32 seed, float persistence, float lacunarity, int32 octaves);
     
-    virtual float GetNoise2D_Implementation(float X, float Y) override;
+    virtual float GetNoise2D_Implementation(float X, float Y) const override;
+	virtual void CopyGenerator_Implementation(const UNoiseGenerator* otherGenerator) override;
+
+    TArray<int32> p;
+    TArray<float> g1;
+	TArray<FVector2D> g2;
+	TArray<FVector> g3;
 
 private:
-    void Init(int32 seed = 5);
-
-    int32 Seed = 5;
-    bool bAlreadyInitilise = false;
+    void Init();
+	float PerlinNoise(FVector2D vec) const;
 
     const int32 B = 256;
 	const int32 N = 4096;
 	const int32 BM = 255;
-
-    TArray<int32> p;
-    TArray<float> g;
-    TArray<float> g1;
-	TArray<FVector2D> g2;
-	TArray<FVector> g3;
 };

@@ -144,6 +144,10 @@ void ATerrainGenerator::GenerateTerrain()
 	
 	SetActorScale3D(FVector(Configuration.MapScale));
 	Configuration.InitLODs();
+	if (Configuration.NoiseGeneratorClass)
+	{
+		Configuration.NoiseGenerator = NewObject<UNoiseGenerator>(this, Configuration.NoiseGeneratorClass);
+	}
 	
 	const int32 numThreads = Configuration.GetNumberOfThreads();
 	const int32 chunksPerDirection = Configuration.NumChunks;	
@@ -213,7 +217,7 @@ void ATerrainGenerator::UpdateTerrain()
 	{
 		if (worker)
 		{
-			worker->UpdateConfiguration(Configuration);
+			worker->UpdateConfiguration(Configuration, this);
 		}
 	}
 	

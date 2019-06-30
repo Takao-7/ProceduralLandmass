@@ -36,11 +36,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = 0))
 	int32 NumberOfThreads = 7;
 
+	/* The noise generator class to generate the terrain. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<UNoiseGenerator> NoiseGeneratorClass = nullptr;
 
-	/* The noise generator to generate the terrain. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	/* The noise generator object. */
+	UPROPERTY(BlueprintReadWrite)
 	UNoiseGenerator* NoiseGenerator = nullptr;
 
 	/* Number of vertices per direction per chunk. */
@@ -69,7 +70,14 @@ public:
 	TArray<FLODInfo> LODs = TArray<FLODInfo>();
 
 	///////////////////////////////////////////////////////
-	FTerrainConfiguration() {}
+	FTerrainConfiguration()
+	{
+		if (NoiseGeneratorClass != nullptr)
+		{
+			NoiseGenerator = NewObject<UNoiseGenerator>(nullptr, NoiseGeneratorClass);
+		}
+	}
+
 	FTerrainConfiguration(const FTerrainConfiguration& reference, UObject* outer)
 	{
 		CopyConfiguration(reference, outer);		
@@ -81,7 +89,7 @@ public:
 		return
 		(
 			NumberOfThreads == other.NumberOfThreads &&
-			NoiseGenerator == other.NoiseGenerator &&
+			NoiseGeneratorClass == other.NoiseGeneratorClass &&
 			NumVertices == other.NumVertices &&
 			MapScale == other.MapScale &&
 			NumChunks == other.NumChunks &&
@@ -107,10 +115,11 @@ public:
 			HeightCurve = DuplicateObject<UCurveFloat>(reference.HeightCurve, outer);
 		}
 
-		if (reference.NoiseGeneratorClass)
+		UNoiseGenerator* otherNoiseGenerator = reference.NoiseGenerator;
+		if (otherNoiseGenerator)
 		{
-			NoiseGenerator = NewObject<UNoiseGenerator>(outer, reference.NoiseGeneratorClass);
-            //NoiseGenerator = DuplicateObject<UNoiseGenerator>(reference.NoiseGenerator, outer);
+			NoiseGenerator = DuplicateObject<UNoiseGenerator>(otherNoiseGenerator, outer);
+			NoiseGenerator->CopyGenerator(otherNoiseGenerator);
 		}
 	}
 
