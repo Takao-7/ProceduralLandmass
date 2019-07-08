@@ -13,10 +13,10 @@
 #include "GameFramework/PlayerController.h"
 #include "Public/TerrainChunk.h"
 #include "Kismet/GameplayStatics.h"
-#include <Engine/GameInstance.h>
-#include <Engine/LocalPlayer.h>
-#include <GameFramework/Actor.h>
-#include <RunnableThread.h>
+#include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
+#include "GameFramework/Actor.h"
+#include "RunnableThread.h"
 
 
 ATerrainGenerator::ATerrainGenerator()
@@ -48,10 +48,10 @@ void ATerrainGenerator::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);	
 	UpdateChunkLOD();
 }
-	
+
 void ATerrainGenerator::EditorTick()
 {
-	UpdateChunkLOD();			
+	UpdateChunkLOD();
 	HandleFinishedMeshDataJobs();
 }
 
@@ -175,7 +175,7 @@ void ATerrainGenerator::GenerateTerrain()
 			/* Chunk position is relative to the whole terrain actor. */
 			const FVector chunkPosition = FVector(topLeftChunkPositionX + (x * chunkSize), topLeftChunkPositionY + (y * chunkSize), 0.0f);
 			const FVector2D noiseOffset = FVector2D(chunkPosition);
-	
+
 			const FName chunkName = *FString::Printf(TEXT("Terrain chunk %d"), i);
 			UTerrainChunk* newChunk = NewObject<UTerrainChunk>(this, chunkName);
 			newChunk->InitChunk(this, &Configuration.LODs);
@@ -183,11 +183,11 @@ void ATerrainGenerator::GenerateTerrain()
 			newChunk->bUseAsyncCooking = true;
 			newChunk->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 			newChunk->SetCollisionResponseToAllChannels(ECR_Block);
-				
+
 			newChunk->SetRelativeLocation(chunkPosition);
 			newChunk->SetChunkBoundingBox();
 			Chunks.Add(FVector2D(chunkPosition), newChunk);
-				
+
 			const int32 levelOfDetail = newChunk->GetOptimalLOD(cameraLocation);			
 			CreateAndEnqueueMeshDataJob(newChunk, levelOfDetail, false, noiseOffset);
 			newChunk->Status = EChunkStatus::MESH_DATA_REQUESTED;
@@ -264,13 +264,12 @@ void ATerrainGenerator::UpdateTerrain()
 /////////////////////////////////////////////////////
 void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection /*= false*/, const FVector2D& noiseOffset /*= FVector2D::ZeroVector*/)
 {
-	FMeshDataJob newJob = FMeshDataJob(chunk, &FinishedMeshDataJobs, levelOfDetail, bUpdateMeshSection, noiseOffset);
-	
 	static int32 i = 0;
-	FTerrainGeneratorWorker* worker = WorkerThreads[i % Configuration.GetNumberOfThreads()];
+
+	FMeshDataJob newJob = FMeshDataJob(chunk, &FinishedMeshDataJobs, levelOfDetail, bUpdateMeshSection, noiseOffset);
+	FTerrainGeneratorWorker* worker = WorkerThreads[i++ % Configuration.GetNumberOfThreads()];
 	levelOfDetail == 0 ? worker->PriorityJobs.Enqueue(newJob) : worker->PendingJobs.Enqueue(newJob);
 	worker->UnPause();
-	++i;
 }
 	
 /////////////////////////////////////////////////////

@@ -27,11 +27,11 @@ public:
 		OctaveOffsets = otherGenerator->OctaveOffsets;
 	};
 
-    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Noise Generator")
+    UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "Noise Generator")
     float GetNoise2D(float X, float Y) const;
     virtual float GetNoise2D_Implementation(float X, float Y) const { return 0.0f; };
 
-    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Noise Generator")
+    UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "Noise Generator")
     float GetNoise3D(float X, float Y, float Z) const;
     virtual float GetNoise3D_Implementation(float X, float Y, float Z) const { return 0.0f; };
 
@@ -50,6 +50,7 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true))
 	int32 Octaves = 4;
 
+	/** The noise output will be limited to +/- this value. */
 	UPROPERTY(BlueprintReadWrite)
 	float Limit = 1.0f;
 

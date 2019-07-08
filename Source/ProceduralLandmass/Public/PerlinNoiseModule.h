@@ -31,6 +31,6 @@ private:
 	float PerlinNoise(FVector2D vec) const;
 
     const int32 B = 256;
-	const int32 N = 4096;
-	const int32 BM = 255;
+    const int32 N = 4096;
+    const int32 BM = 255;
 };

@@ -27,7 +27,7 @@ public:
 			{
 				break;
 			}
-
+			
 			optimalLOD = lodInfo.LOD;
 		}
 

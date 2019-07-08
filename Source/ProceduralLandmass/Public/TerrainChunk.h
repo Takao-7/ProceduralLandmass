@@ -59,7 +59,7 @@ private:
 	/* This chunk's size, including it's parent terrain generator scale. */
 	int32 TotalChunkSize = 0;
 
-	FBox Box;
+    FBox Box;
 
 	/////////////////////////////////////////////////////
 public:
