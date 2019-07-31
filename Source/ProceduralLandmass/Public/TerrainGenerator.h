@@ -75,7 +75,16 @@ public:
 	
 	/* Queue for finished jobs */
 	TQueue<FMeshDataJob, EQueueMode::Mpsc> FinishedMeshDataJobs;
-		
+	
+private:
+	/* Number of mesh data jobs remaining */
+	static int32 NumJobsRemaining;
+	
+	/* The time stamp when we start generating the terrain */
+	float TimeStampStartGeneratingTerrain;
+	
+	bool bFirstGenerationDone = false;
+	
 	
 	/////////////////////////////////////////////////////
 					/* Functions */

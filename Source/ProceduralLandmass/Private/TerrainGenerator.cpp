@@ -19,6 +19,9 @@
 #include "RunnableThread.h"
 
 
+int32 ATerrainGenerator::NumJobsRemaining = 0;
+
+
 ATerrainGenerator::ATerrainGenerator()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -37,9 +40,9 @@ ATerrainGenerator::~ATerrainGenerator()
 void ATerrainGenerator::BeginPlay()
 {
 	Super::BeginPlay();
-
-	ClearTimers();
-	ClearThreads();
+	GenerateTerrain();
+	//ClearTimers();
+	//ClearThreads();
 }
 	
 /////////////////////////////////////////////////////
@@ -47,6 +50,7 @@ void ATerrainGenerator::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);	
 	UpdateChunkLOD();
+	HandleFinishedMeshDataJobs();
 }
 
 void ATerrainGenerator::EditorTick()
@@ -114,6 +118,10 @@ void ATerrainGenerator::ClearTerrain()
 	}
 	
 	Chunks.Empty();
+	
+	bFirstGenerationDone = false;
+	NumJobsRemaining = 0;
+	TimeStampStartGeneratingTerrain = 0.0f;
 }
 
 void ATerrainGenerator::ClearThreads()
@@ -196,7 +204,11 @@ void ATerrainGenerator::GenerateTerrain()
 	}
 
 	OldConfiguration = Configuration;
-	GetWorld()->GetTimerManager().SetTimer(THEditorTick, this, &ATerrainGenerator::EditorTick, 1 / 60.0f, true);
+	TimeStampStartGeneratingTerrain = GetWorld()->GetTimeSeconds();
+	if(WITH_EDITOR && !HasActorBegunPlay())
+	{
+		GetWorld()->GetTimerManager().SetTimer(THEditorTick, this, &ATerrainGenerator::EditorTick, 1 / 60.0f, true);
+	}
 }
 	
 void ATerrainGenerator::UpdateTerrain()
@@ -265,7 +277,7 @@ void ATerrainGenerator::UpdateTerrain()
 void ATerrainGenerator::CreateAndEnqueueMeshDataJob(UTerrainChunk* chunk, int32 levelOfDetail, bool bUpdateMeshSection /*= false*/, const FVector2D& noiseOffset /*= FVector2D::ZeroVector*/)
 {
 	static int32 i = 0;
-
+	NumJobsRemaining++;
 	FMeshDataJob newJob = FMeshDataJob(chunk, &FinishedMeshDataJobs, levelOfDetail, bUpdateMeshSection, noiseOffset);
 	FTerrainGeneratorWorker* worker = WorkerThreads[i++ % Configuration.GetNumberOfThreads()];
 	levelOfDetail == 0 ? worker->PriorityJobs.Enqueue(newJob) : worker->PendingJobs.Enqueue(newJob);
@@ -296,5 +308,19 @@ void ATerrainGenerator::HandleFinishedMeshDataJobs()
 		chunk->SetMaterial(lod, TerrainMaterial);
 		chunk->SetNewLOD(lod);
 		chunk->Status = EChunkStatus::IDLE;
+		
+		if(--NumJobsRemaining == 0 && !bFirstGenerationDone)
+		{
+			bFirstGenerationDone = true;
+			float timeForHandlingMeshDataJobs = GetWorld()->GetTimeSeconds() - TimeStampStartGeneratingTerrain;
+			FString text = FString::Printf(TEXT("Time for generating terrain: %.2f seconds"), timeForHandlingMeshDataJobs);
+			UKismetSystemLibrary::PrintString(this, text, true, true, FLinearColor::Green, 5.0f);
+		}
+	}
+	
+	if(NumJobsRemaining > 0)
+	{
+		FString text = FString::Printf(TEXT("%d jobs remaining."), NumJobsRemaining);
+		UKismetSystemLibrary::PrintString(this, text, true, false, FLinearColor::Yellow, 0.0f);
 	}
 }
